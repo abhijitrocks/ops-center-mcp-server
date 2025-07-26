@@ -1,0 +1,53 @@
+{
+  "openapi": "3.0.1",
+  "info": { "title": "OPS Center MCP JSON-RPC", "version": "1.0.0" },
+  "paths": {
+    "/rpc": {
+      "post": {
+        "operationId": "rpc",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/JSONRPCRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/JSONRPCResponse" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "JSONRPCRequest": {
+        "type": "object",
+        "properties": {
+          "jsonrpc": { "type": "string" },
+          "method":   { "type": "string" },
+          "params":   { "type": "object" },
+          "id":       { "type": [ "string", "number", "null" ] }
+        },
+        "required": ["jsonrpc","method","id"]
+      },
+      "JSONRPCResponse": {
+        "type": "object",
+        "properties": {
+          "jsonrpc": { "type": "string" },
+          "result":  { "type": "object" },
+          "error":   { "type": "object" },
+          "id":      { "type": [ "string","number","null" ] }
+        },
+        "required": ["jsonrpc","id"]
+      }
+    }
+  }
+}
