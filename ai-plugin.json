@@ -1,0 +1,16 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "OPS Center MCP",
+  "name_for_model": "ops_center_mcp",
+  "description_for_human": "Assign and query tasks via JSON-RPC",
+  "description_for_model": "Plugin for task management. Use the rpc endpoint to assign tasks and update status.",
+  "auth": { "type": "none" },
+  "api": {
+    "type": "openapi",
+    "url": "https://mcp-server-xasj.onrender.com/openapi.json",
+    "is_user_authenticated": false
+  },
+  "logo_url": "https://mcp-server-xasj.onrender.com/logo.png",
+  "contact_email": "you@yourdomain.com",
+  "legal_info_url": "https://yourdomain.com/legal"
+}
