@@ -1,10 +1,10 @@
 # render.yaml
 services:
-  - type: web_service
-    name: mcp-server
+  - name: mcp-server
+    type: web           # ← use “web”, not “web_service”
     env: python
-    region: oregon     # or your preferred region
-    plan: free         # or starter/standard if you need more CPU/memory
+    region: oregon      # or your chosen region
+    plan: free          # or starter/standard
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
