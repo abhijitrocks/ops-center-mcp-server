@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from sqlmodel import SQLModel
 from database import engine
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
 
 # Import routers
 from routers import (
@@ -21,6 +24,11 @@ def on_startup():
 @app.get("/health")
 def health():
     return {"status": "OK"}
+
+@app.get("/ai-plugin.json", include_in_schema=False)
+def plugin_manifest():
+    return FileResponse("static/ai-plugin.json", media_type="application/json")
+
 
 # Include routers
 app.include_router(tenant.router)
