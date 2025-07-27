@@ -493,6 +493,36 @@ class ConnectionManager:
                     ]
                 }
             
+            elif action == "greeting":
+                return {
+                    "type": "conversational",
+                    "message": f"👋 Hello! Welcome to the MCP Chat Interface. I'm here to help you manage agents, workbenches, and tasks. What would you like to do today?",
+                    "suggestions": ["help", "agents", "workbenches", "coverage"]
+                }
+            
+            elif action == "thanks":
+                return {
+                    "type": "conversational", 
+                    "message": "😊 You're welcome! Happy to help with your MCP management needs. Is there anything else you'd like to do?",
+                    "suggestions": ["agents", "workbenches", "coverage", "help"]
+                }
+            
+            elif action == "goodbye":
+                return {
+                    "type": "conversational",
+                    "message": "👋 Goodbye! Thanks for using the MCP Chat Interface. Have a great day!",
+                    "suggestions": []
+                }
+            
+            elif action == "status":
+                llm_status = "🤖 LLM-POWERED" if self.llm_enabled else "🤖 Rule-based"
+                mcp_status = "🟢 Connected" if self.mcp_client else "🔶 Demo Mode"
+                return {
+                    "type": "conversational",
+                    "message": f"🚀 I'm doing great! System status: {llm_status} | {mcp_status} | Ready to help you manage your MCP system.",
+                    "suggestions": ["agents", "workbenches", "coverage", "help"]
+                }
+            
             elif action == "prompts" or action == "suggestions":
                 prompts = self.get_suggested_prompts()
                 return {"type": "suggested_prompts", "data": prompts}
@@ -798,6 +828,20 @@ class ConnectionManager:
 
     def normalize_command(self, command_lower: str, parts: List[str]) -> str:
         """Normalize natural language commands to standard actions"""
+        
+        # Handle conversational greetings and common phrases
+        if command_lower in ["hi", "hello", "hey", "good morning", "good afternoon", "good evening"]:
+            return "greeting"
+        
+        if command_lower in ["thanks", "thank you", "thanks!", "thank you!"]:
+            return "thanks"
+        
+        if command_lower in ["bye", "goodbye", "see you", "exit", "quit"]:
+            return "goodbye"
+        
+        if "how are you" in command_lower or "how's it going" in command_lower or "what's up" in command_lower:
+            return "status"
+        
         # Handle contextual/pronoun commands
         if any(phrase in command_lower for phrase in ['their assigned', 'their workbenches', 'their roles', 'assigned workbenches', 'workbench assignments']):
             return "agent-workbench-summary"  # New command for showing all agent workbench assignments
@@ -2640,6 +2684,34 @@ Built with modern web technologies for optimal performance.`,
             
             if (result.type === 'llm_clear') {
                 return `<div style="color: #48bb78; font-weight: bold;">🧹 ${result.message}</div>`;
+            }
+            
+            if (result.type === 'conversational') {
+                let html = `<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 16px; border-radius: 12px; margin: 8px 0;">
+                    ${result.message}
+                </div>`;
+                
+                if (result.suggestions && result.suggestions.length > 0) {
+                    html += '<div style="margin-top: 12px;"><strong>💡 Quick suggestions:</strong><br>';
+                    result.suggestions.forEach(suggestion => {
+                        html += `<button onclick="selectPrompt('${suggestion}')" style="
+                            background: var(--primary-600); 
+                            color: white; 
+                            border: none; 
+                            padding: 6px 12px; 
+                            margin: 4px; 
+                            border-radius: 16px; 
+                            cursor: pointer; 
+                            font-size: 12px;
+                            transition: all 0.2s ease;
+                        " onmouseover="this.style.background='var(--primary-700)'" 
+                           onmouseout="this.style.background='var(--primary-600)'">
+                            ${suggestion}
+                        </button>`;
+                    });
+                    html += '</div>';
+                }
+                return html;
             }
             
             if (result.type === 'role_assignment') {
