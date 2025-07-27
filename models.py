@@ -60,3 +60,11 @@ class HistoryTaskInfo(SQLModel, table=True):
         default=None,
         sa_column=Column(JSON, nullable=True)
     )
+
+
+class Workbench(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(unique=True)
+    description: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
