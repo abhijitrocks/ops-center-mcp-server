@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 import json
 import asyncio
+import os
 from datetime import datetime
 from typing import List, Dict, Any
 import uvicorn
@@ -31,7 +32,16 @@ except ImportError:
     WORKBENCH_MANAGER_AVAILABLE = False
     print("Warning: Workbench Role Manager not available.")
 
-app = FastAPI(title="MCP Chat Interface", description="Web interface for MCP Client")
+# Environment variables
+PORT = int(os.getenv("PORT", 8080))
+HOST = os.getenv("HOST", "0.0.0.0")
+MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8000")
+
+app = FastAPI(
+    title="MCP Chat Interface", 
+    description="Web interface for MCP Client",
+    version="1.0.0"
+)
 
 # Create templates directory if it doesn't exist
 templates_dir = Path("templates")
@@ -54,7 +64,7 @@ class ConnectionManager:
         
         if MCP_AVAILABLE:
             try:
-                config = MCPClientConfig(server_url="http://localhost:8000")
+                config = MCPClientConfig(server_url=MCP_SERVER_URL)
                 self.mcp_client = MCPClient(config)
             except Exception as e:
                 print(f"Could not initialize MCP client: {e}")
@@ -267,7 +277,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             "timestamp": datetime.now().isoformat(),
             "status": {
                 "mcp_available": MCP_AVAILABLE,
-                "workbench_manager_available": WORKBENCH_MANAGER_AVAILABLE
+                "workbench_manager_available": WORKBENCH_MANAGER_AVAILABLE,
+                "deployment": "cloud" if PORT != 8080 or HOST != "0.0.0.0" else "local"
             }
         }
         await manager.send_personal_message(json.dumps(welcome_msg), websocket)
@@ -303,6 +314,7 @@ async def health_check():
         "status": "healthy",
         "mcp_available": MCP_AVAILABLE,
         "workbench_manager_available": WORKBENCH_MANAGER_AVAILABLE,
+        "deployment": "cloud" if PORT != 8080 or HOST != "0.0.0.0" else "local",
         "timestamp": datetime.now().isoformat()
     }
 
@@ -318,7 +330,7 @@ async def get_agents():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Create the HTML template
+# Create the HTML template (same as before but with better mobile support)
 chat_html_template = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -326,6 +338,7 @@ chat_html_template = '''
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MCP Chat Interface</title>
+    <meta name="description" content="Interactive web interface for MCP system">
     <style>
         * {
             margin: 0;
@@ -336,19 +349,21 @@ chat_html_template = '''
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            height: 100vh;
+            min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
+            padding: 10px;
         }
         
         .chat-container {
             background: white;
             border-radius: 15px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            width: 90%;
+            width: 100%;
             max-width: 900px;
-            height: 85vh;
+            height: 90vh;
+            min-height: 600px;
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -525,6 +540,50 @@ chat_html_template = '''
             font-size: 12px;
             margin-left: 10px;
         }
+        
+        .cloud-indicator {
+            background: #d6f5d6;
+            color: #2d7a2d;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 5px;
+            }
+            
+            .chat-container {
+                height: 95vh;
+                border-radius: 10px;
+            }
+            
+            .chat-header {
+                padding: 15px;
+                border-radius: 10px 10px 0 0;
+            }
+            
+            .chat-header h1 {
+                font-size: 20px;
+            }
+            
+            .chat-messages {
+                padding: 15px;
+            }
+            
+            .chat-input {
+                padding: 15px;
+            }
+            
+            .connection-status {
+                top: 10px;
+                right: 10px;
+                font-size: 12px;
+                padding: 8px 12px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -553,6 +612,7 @@ chat_html_template = '''
         let userId = 'User_' + Math.random().toString(36).substr(2, 9);
         let mcpAvailable = false;
         let workbenchManagerAvailable = false;
+        let isCloudDeployment = false;
         
         function connect() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -631,8 +691,10 @@ chat_html_template = '''
                 className += 'system';
                 mcpAvailable = data.status?.mcp_available || false;
                 workbenchManagerAvailable = data.status?.workbench_manager_available || false;
+                isCloudDeployment = data.status?.deployment === 'cloud';
                 
                 let statusIndicator = '';
+                if (isCloudDeployment) statusIndicator += '<span class="cloud-indicator">🌐 Cloud Deployed</span>';
                 if (!mcpAvailable) statusIndicator += '<span class="demo-indicator">MCP Demo Mode</span>';
                 if (!workbenchManagerAvailable) statusIndicator += '<span class="demo-indicator">Role Manager Unavailable</span>';
                 
@@ -764,10 +826,11 @@ if __name__ == "__main__":
         f.write(chat_html_template)
     
     print("🚀 Starting MCP Chat Interface...")
-    print("📱 Chat interface will be available at: http://localhost:8080")
+    print(f"📱 Chat interface will be available at: http://{HOST}:{PORT}")
     print("🔗 Share this URL with others to give them access to the MCP system")
     print("💡 Available commands: help, agents, workbenches, roles, assign-role, agent-roles, coverage")
     print(f"🔧 MCP Client Available: {MCP_AVAILABLE}")
     print(f"🔧 Workbench Manager Available: {WORKBENCH_MANAGER_AVAILABLE}")
+    print(f"🌐 Deployment: {'Cloud' if PORT != 8080 or HOST != '0.0.0.0' else 'Local'}")
     
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host=HOST, port=PORT)
