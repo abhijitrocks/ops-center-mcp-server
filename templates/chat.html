@@ -1,0 +1,437 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Chat Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .chat-container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 900px;
+            height: 85vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .chat-header {
+            background: #4a5568;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 15px 15px 0 0;
+        }
+        
+        .chat-header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        
+        .chat-header p {
+            opacity: 0.8;
+            font-size: 14px;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #f7fafc;
+        }
+        
+        .message {
+            margin-bottom: 15px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            max-width: 85%;
+            word-wrap: break-word;
+        }
+        
+        .message.user {
+            background: #4299e1;
+            color: white;
+            margin-left: auto;
+            text-align: right;
+        }
+        
+        .message.system {
+            background: #48bb78;
+            color: white;
+            text-align: center;
+            max-width: 100%;
+            font-size: 14px;
+        }
+        
+        .message.response {
+            background: #e2e8f0;
+            color: #2d3748;
+        }
+        
+        .message.error {
+            background: #f56565;
+            color: white;
+        }
+        
+        .message-time {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+        
+        .chat-input {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .chat-input input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 25px;
+            outline: none;
+            font-size: 16px;
+        }
+        
+        .chat-input input:focus {
+            border-color: #4299e1;
+        }
+        
+        .chat-input button {
+            background: #4299e1;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        
+        .chat-input button:hover {
+            background: #3182ce;
+        }
+        
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            border-radius: 20px;
+            color: white;
+            font-size: 14px;
+            z-index: 1000;
+        }
+        
+        .connected {
+            background: #48bb78;
+        }
+        
+        .disconnected {
+            background: #f56565;
+        }
+        
+        .command-result {
+            background: #f0f9ff;
+            border: 1px solid #bae6fd;
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        
+        .help-commands {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .help-commands li {
+            background: #edf2f7;
+            margin: 5px 0;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        
+        .workbench-list {
+            margin: 10px 0;
+        }
+        
+        .workbench-item {
+            background: #f0f4f8;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            padding: 10px;
+            margin: 5px 0;
+        }
+        
+        .role-assignment {
+            background: #e6fffa;
+            border: 1px solid #81e6d9;
+            border-radius: 6px;
+            padding: 8px;
+            margin: 5px 0;
+        }
+        
+        .demo-indicator {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>🤖 MCP Chat Interface</h1>
+            <p>Interactive command interface for MCP system | Type 'help' to get started</p>
+        </div>
+        
+        <div class="chat-messages" id="messages">
+            <!-- Messages will appear here -->
+        </div>
+        
+        <div class="chat-input">
+            <input type="text" id="messageInput" placeholder="Type a command (e.g., 'help', 'agents', 'workbenches', 'roles 1')..." maxlength="500">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+    
+    <div class="connection-status disconnected" id="connectionStatus">
+        Connecting...
+    </div>
+    
+    <script>
+        let socket;
+        let userId = 'User_' + Math.random().toString(36).substr(2, 9);
+        let mcpAvailable = false;
+        let workbenchManagerAvailable = false;
+        
+        function connect() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/${userId}`;
+            socket = new WebSocket(wsUrl);
+            
+            socket.onopen = function(event) {
+                updateConnectionStatus(true);
+            };
+            
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                displayMessage(data);
+            };
+            
+            socket.onclose = function(event) {
+                updateConnectionStatus(false);
+                setTimeout(connect, 3000); // Reconnect after 3 seconds
+            };
+            
+            socket.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                updateConnectionStatus(false);
+            };
+        }
+        
+        function updateConnectionStatus(connected) {
+            const statusEl = document.getElementById('connectionStatus');
+            if (connected) {
+                statusEl.textContent = '🟢 Connected';
+                statusEl.className = 'connection-status connected';
+            } else {
+                statusEl.textContent = '🔴 Disconnected';
+                statusEl.className = 'connection-status disconnected';
+            }
+        }
+        
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (message === '' || !socket || socket.readyState !== WebSocket.OPEN) {
+                return;
+            }
+            
+            // Display user message
+            displayMessage({
+                type: 'user',
+                message: message,
+                timestamp: new Date().toISOString()
+            });
+            
+            // Send to server
+            socket.send(JSON.stringify({
+                message: message,
+                user: userId
+            }));
+            
+            input.value = '';
+        }
+        
+        function displayMessage(data) {
+            const messagesEl = document.getElementById('messages');
+            const messageEl = document.createElement('div');
+            
+            let className = 'message ';
+            let content = '';
+            
+            if (data.type === 'user') {
+                className += 'user';
+                content = `
+                    <div>${data.message}</div>
+                    <div class="message-time">${new Date(data.timestamp).toLocaleTimeString()}</div>
+                `;
+            } else if (data.type === 'system') {
+                className += 'system';
+                mcpAvailable = data.status?.mcp_available || false;
+                workbenchManagerAvailable = data.status?.workbench_manager_available || false;
+                
+                let statusIndicator = '';
+                if (!mcpAvailable) statusIndicator += '<span class="demo-indicator">MCP Demo Mode</span>';
+                if (!workbenchManagerAvailable) statusIndicator += '<span class="demo-indicator">Role Manager Unavailable</span>';
+                
+                content = `
+                    <div>${data.message} ${statusIndicator}</div>
+                    <div class="message-time">${new Date(data.timestamp).toLocaleTimeString()}</div>
+                `;
+            } else if (data.type === 'response') {
+                className += 'response';
+                content = `
+                    <div><strong>Command:</strong> ${data.command}</div>
+                    <div class="command-result">${formatResult(data.result)}</div>
+                    <div class="message-time">${new Date(data.timestamp).toLocaleTimeString()}</div>
+                `;
+            }
+            
+            messageEl.className = className;
+            messageEl.innerHTML = content;
+            messagesEl.appendChild(messageEl);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+        
+        function formatResult(result) {
+            if (result.error) {
+                let errorMsg = `<span style="color: #f56565;">❌ Error: ${result.error}</span>`;
+                if (result.demo) {
+                    errorMsg += '<br><span class="demo-indicator">Running in demo mode</span>';
+                }
+                return errorMsg;
+            }
+            
+            if (result.type === 'help') {
+                let html = '<strong>📚 Available Commands:</strong><ul class="help-commands">';
+                result.commands.forEach(cmd => {
+                    html += `<li>${cmd}</li>`;
+                });
+                html += '</ul>';
+                return html;
+            }
+            
+            if (result.type === 'agents') {
+                const agents = result.data.agents || [];
+                return `<strong>👥 Agents (${agents.length}):</strong><br>${agents.join(', ')}`;
+            }
+            
+            if (result.type === 'workbenches') {
+                let html = '<strong>🏢 Workbenches:</strong><div class="workbench-list">';
+                result.data.forEach(wb => {
+                    html += `<div class="workbench-item">
+                        <strong>${wb.id}. ${wb.name}</strong><br>
+                        <small>${wb.description}</small>
+                    </div>`;
+                });
+                html += '</div>';
+                return html;
+            }
+            
+            if (result.type === 'workbench_roles') {
+                const wb = result.data;
+                let html = `<strong>🎭 Roles in ${wb.workbench_name}:</strong><div class="workbench-list">`;
+                Object.entries(wb.roles).forEach(([role, agents]) => {
+                    html += `<div class="role-assignment">
+                        <strong>${role}:</strong> ${agents.length > 0 ? agents.map(a => a.agent).join(', ') : '(vacant)'}
+                    </div>`;
+                });
+                html += '</div>';
+                return html;
+            }
+            
+            if (result.type === 'agent_roles') {
+                const roles = result.data;
+                let html = `<strong>🎭 Roles for ${result.agent}:</strong><div class="workbench-list">`;
+                roles.forEach(role => {
+                    html += `<div class="role-assignment">
+                        ${role.workbench_name}: <strong>${role.role}</strong>
+                    </div>`;
+                });
+                html += '</div>';
+                return html;
+            }
+            
+            if (result.type === 'coverage_report') {
+                const report = result.data;
+                let html = '<strong>📊 Role Coverage Report:</strong><div class="workbench-list">';
+                report.workbenches.forEach(wb => {
+                    html += `<div class="workbench-item">
+                        <strong>${wb.workbench_name}:</strong> ${wb.coverage_percentage.toFixed(0)}% coverage (${wb.gaps} gaps)
+                    </div>`;
+                });
+                html += '</div>';
+                return html;
+            }
+            
+            if (result.type === 'role_assignment') {
+                return `<div class="role-assignment">${result.message}</div>`;
+            }
+            
+            if (result.type === 'tasks') {
+                const tasks = result.data || [];
+                return `<strong>📋 Recent tasks for ${result.agent} (${tasks.length}):</strong><br><pre>${JSON.stringify(tasks, null, 2)}</pre>`;
+            }
+            
+            if (result.type === 'stats') {
+                return `<strong>📊 Stats for ${result.agent}:</strong><br>
+                       Task Count: ${JSON.stringify(result.task_count)}<br>
+                       Avg Time: ${JSON.stringify(result.avg_time)}`;
+            }
+            
+            return `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+        }
+        
+        // Event listeners
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        
+        // Connect on page load
+        connect();
+    </script>
+</body>
+</html>
