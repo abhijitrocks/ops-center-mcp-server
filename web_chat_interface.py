@@ -2058,9 +2058,10 @@ chat_html_template = '''
                     <textarea 
                         id="messageInput" 
                         class="chat-textarea"
-                        placeholder="Type your message here... Use natural language or commands"
+                        placeholder="🔄 Connecting to server..."
                         rows="1"
-                        maxlength="1000"></textarea>
+                        maxlength="1000"
+                        disabled></textarea>
                     <div class="input-hints">
                         <div class="hint">
                             <span>💡</span>
@@ -2072,10 +2073,10 @@ chat_html_template = '''
                         </div>
                     </div>
                 </div>
-                <button class="send-button" onclick="sendMessage()" id="sendButton">
-                    <span class="send-icon">📤</span>
-                    <span>Send</span>
-                </button>
+                                    <button class="send-button" onclick="sendMessage()" id="sendButton" disabled>
+                        <span class="send-icon">⏳</span>
+                        <span>Connecting</span>
+                    </button>
             </div>
         </div>
     </div>
@@ -2340,6 +2341,20 @@ Here's what you can do:
             
             // Enable fallback communication
             window.fallbackMode = true;
+            
+            // Force enable input elements in case they weren't enabled
+            setTimeout(() => {
+                const messageInput = document.getElementById('messageInput');
+                const sendButton = document.getElementById('sendButton');
+                if (messageInput && messageInput.disabled) {
+                    messageInput.disabled = false;
+                    messageInput.placeholder = "Type your message here... (HTTP API mode)";
+                }
+                if (sendButton && sendButton.disabled) {
+                    sendButton.disabled = false;
+                    sendButton.innerHTML = '<span class="send-icon">📤</span><span>Send</span>';
+                }
+            }, 100);
         }
         
         // Default prompts in case API fails
@@ -2986,16 +3001,28 @@ Here's what you can do:
             }
         });
         
-        // Connect on page load
-        connect();
+        // Check if we're on a cloud platform
+        const isCloudDeployment = window.location.hostname.includes('.onrender.com') || 
+                                 window.location.hostname.includes('.herokuapp.com') ||
+                                 window.location.hostname.includes('.railway.app') ||
+                                 window.location.hostname.includes('.vercel.app') ||
+                                 window.location.hostname.includes('.netlify.app');
         
-        // Also try fallback mode after a short delay if connection issues
-        setTimeout(() => {
-            if (!socket || socket.readyState !== WebSocket.OPEN) {
-                console.log('WebSocket not ready after 3 seconds, enabling fallback mode');
-                enableFallbackMode();
-            }
-        }, 3000);
+        if (isCloudDeployment) {
+            console.log('🌐 Cloud deployment detected - enabling fallback mode immediately');
+            setTimeout(() => enableFallbackMode(), 100);
+        } else {
+            // Connect on page load for local development
+            connect();
+            
+            // Also try fallback mode quickly if connection issues
+            setTimeout(() => {
+                if (!socket || socket.readyState !== WebSocket.OPEN) {
+                    console.log('WebSocket not ready after 1 second, enabling fallback mode');
+                    enableFallbackMode();
+                }
+            }, 1000);
+        }
     </script>
 </body>
 </html>
