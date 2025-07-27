@@ -111,6 +111,107 @@ class ConnectionManager:
         }
         return demo_data.get(action, {"error": "Demo data not available"})
 
+    def create_agent(self, agent_name: str, user: str = "system") -> Dict[str, Any]:
+        """Create a new agent in the system"""
+        try:
+            conn = sqlite3.connect("ops_center.db")
+            cursor = conn.cursor()
+            
+            # Check if agent already exists
+            cursor.execute('SELECT COUNT(*) FROM usertaskinfo WHERE agent = ?', (agent_name,))
+            existing = cursor.fetchone()[0]
+            
+            if existing > 0:
+                return {"error": f"Agent '{agent_name}' already exists"}
+            
+            # Create agent by adding a creation record
+            cursor.execute('''
+                INSERT INTO usertaskinfo (agent, task_id, status, created_at)
+                VALUES (?, ?, ?, ?)
+            ''', (agent_name, -1, 'agent_created', datetime.now()))
+            
+            conn.commit()
+            conn.close()
+            
+            return {
+                "type": "agent_creation",
+                "message": f"✅ Agent '{agent_name}' created successfully!",
+                "agent": agent_name,
+                "created_by": user
+            }
+            
+        except Exception as e:
+            return {"error": f"Failed to create agent: {str(e)}"}
+
+    def create_workbench(self, workbench_name: str, description: str = "", user: str = "system") -> Dict[str, Any]:
+        """Create a new workbench in the system"""
+        try:
+            conn = sqlite3.connect("ops_center.db")
+            cursor = conn.cursor()
+            
+            # Check if workbench already exists
+            cursor.execute('SELECT COUNT(*) FROM workbench WHERE name = ?', (workbench_name,))
+            existing = cursor.fetchone()[0]
+            
+            if existing > 0:
+                return {"error": f"Workbench '{workbench_name}' already exists"}
+            
+            # Create workbench
+            cursor.execute('''
+                INSERT INTO workbench (name, description, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+            ''', (workbench_name, description, datetime.now(), datetime.now()))
+            
+            workbench_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            
+            return {
+                "type": "workbench_creation",
+                "message": f"✅ Workbench '{workbench_name}' created successfully!",
+                "workbench_id": workbench_id,
+                "workbench_name": workbench_name,
+                "description": description,
+                "created_by": user
+            }
+            
+        except Exception as e:
+            return {"error": f"Failed to create workbench: {str(e)}"}
+
+    def create_task(self, task_id: int, agent: str = None, workbench_id: int = None, user: str = "system") -> Dict[str, Any]:
+        """Create a new task in the system"""
+        try:
+            conn = sqlite3.connect("ops_center.db")
+            cursor = conn.cursor()
+            
+            # Check if task already exists
+            cursor.execute('SELECT COUNT(*) FROM usertaskinfo WHERE task_id = ?', (task_id,))
+            existing = cursor.fetchone()[0]
+            
+            if existing > 0:
+                return {"error": f"Task {task_id} already exists"}
+            
+            # Create task
+            cursor.execute('''
+                INSERT INTO usertaskinfo (agent, task_id, status, created_at, workbench_id)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (agent, task_id, 'created', datetime.now(), workbench_id))
+            
+            conn.commit()
+            conn.close()
+            
+            return {
+                "type": "task_creation",
+                "message": f"✅ Task {task_id} created successfully!",
+                "task_id": task_id,
+                "agent": agent,
+                "workbench_id": workbench_id,
+                "created_by": user
+            }
+            
+        except Exception as e:
+            return {"error": f"Failed to create task: {str(e)}"}
+
     def get_suggested_prompts(self) -> List[Dict[str, str]]:
         """Get comprehensive suggested prompts for all features"""
         prompts = [
@@ -118,6 +219,14 @@ class ConnectionManager:
             {"category": "🚀 Getting Started", "prompt": "help", "description": "Show all available commands"},
             {"category": "🚀 Getting Started", "prompt": "agents", "description": "List all agents in the system"},
             {"category": "🚀 Getting Started", "prompt": "workbenches", "description": "Show all workbenches with descriptions"},
+            
+            # Creation Operations
+            {"category": "✨ Create New Items", "prompt": "create-agent NewAgent", "description": "Create a new agent named 'NewAgent'"},
+            {"category": "✨ Create New Items", "prompt": "create-agent DataAnalyst", "description": "Create a data analyst agent"},
+            {"category": "✨ Create New Items", "prompt": "create-workbench Support \"Customer support operations\"", "description": "Create a Support workbench"},
+            {"category": "✨ Create New Items", "prompt": "create-workbench Compliance \"Regulatory compliance tasks\"", "description": "Create a Compliance workbench"},
+            {"category": "✨ Create New Items", "prompt": "create-task 6001", "description": "Create a new task with ID 6001"},
+            {"category": "✨ Create New Items", "prompt": "create-task 6002 Chitra 1", "description": "Create task 6002 assigned to Chitra in Dispute workbench"},
             
             # Agent Management
             {"category": "👥 Agent Management", "prompt": "agent-roles abhijit", "description": "Show all roles for abhijit"},
@@ -135,6 +244,12 @@ class ConnectionManager:
             {"category": "🎭 Role Management", "prompt": "assign-role ramesh 3 Assessor", "description": "Assign ramesh as Assessor in Account Holder workbench"},
             {"category": "🎭 Role Management", "prompt": "assign-role Aleem 1 Reviewer", "description": "Assign Aleem as Reviewer in Dispute workbench"},
             {"category": "🎭 Role Management", "prompt": "assign-role test_agent 4 Team Lead", "description": "Assign test_agent as Team Lead in Loan workbench"},
+            
+            # Quick Setup Examples
+            {"category": "⚡ Quick Setup", "prompt": "create-agent ProjectManager", "description": "Create a project manager agent"},
+            {"category": "⚡ Quick Setup", "prompt": "create-workbench Marketing \"Marketing campaign management\"", "description": "Create Marketing workbench"},
+            {"category": "⚡ Quick Setup", "prompt": "assign-role ProjectManager 1 Team Lead", "description": "Make ProjectManager a team lead"},
+            {"category": "⚡ Quick Setup", "prompt": "create-task 7001 ProjectManager 1", "description": "Create task for ProjectManager in Dispute"},
             
             # Analytics & Reports
             {"category": "📊 Analytics & Reports", "prompt": "coverage", "description": "Show role coverage across all workbenches"},
@@ -169,6 +284,12 @@ class ConnectionManager:
             {"category": "🔍 System Insights", "prompt": "coverage", "description": "Identify workbenches needing attention"},
             {"category": "🔍 System Insights", "prompt": "agent-roles bulk_agent", "description": "See bulk_agent's current responsibilities"},
             {"category": "🔍 System Insights", "prompt": "agent-roles workflow_agent", "description": "Check workflow_agent assignments"},
+            
+            # Bulk Operations
+            {"category": "🔄 Bulk Operations", "prompt": "create-agent TeamLead1", "description": "Create first team lead"},
+            {"category": "🔄 Bulk Operations", "prompt": "create-agent TeamLead2", "description": "Create second team lead"},
+            {"category": "🔄 Bulk Operations", "prompt": "assign-role TeamLead1 1 Team Lead", "description": "Assign team lead role"},
+            {"category": "🔄 Bulk Operations", "prompt": "assign-role TeamLead2 2 Team Lead", "description": "Assign to different workbench"},
         ]
         
         # Filter out MCP-only commands if not available
@@ -195,6 +316,9 @@ class ConnectionManager:
                         "help - Show available commands",
                         "agents - List all agents",
                         "workbenches - List all workbenches",
+                        "create-agent <name> - Create a new agent",
+                        "create-workbench <name> \"<description>\" - Create a new workbench",
+                        "create-task <id> [agent] [workbench_id] - Create a new task",
                         "tasks <agent> - Get tasks for agent",
                         "assign <agent> <task_id> [workbench_id] - Assign task to agent",
                         "status <task_id> <agent> <status> - Update task status",
@@ -209,6 +333,28 @@ class ConnectionManager:
             elif action == "prompts" or action == "suggestions":
                 prompts = self.get_suggested_prompts()
                 return {"type": "suggested_prompts", "data": prompts}
+            
+            elif action == "create-agent" and len(parts) > 1:
+                agent_name = parts[1]
+                return self.create_agent(agent_name, user)
+            
+            elif action == "create-workbench" and len(parts) > 1:
+                workbench_name = parts[1]
+                # Handle description in quotes
+                description = ""
+                if len(parts) > 2:
+                    # Join remaining parts and remove quotes
+                    description = " ".join(parts[2:]).strip('"\'')
+                return self.create_workbench(workbench_name, description, user)
+            
+            elif action == "create-task" and len(parts) > 1:
+                try:
+                    task_id = int(parts[1])
+                    agent = parts[2] if len(parts) > 2 else None
+                    workbench_id = int(parts[3]) if len(parts) > 3 else None
+                    return self.create_task(task_id, agent, workbench_id, user)
+                except ValueError:
+                    return {"error": "Task ID must be a number"}
             
             elif action == "agents":
                 if self.mcp_client:
@@ -452,7 +598,7 @@ chat_html_template = '''
         }
         
         .sidebar {
-            width: 300px;
+            width: 320px;
             background: #f8fafc;
             border-right: 1px solid #e2e8f0;
             display: flex;
@@ -511,6 +657,16 @@ chat_html_template = '''
             background: #edf2f7;
             border-color: #4299e1;
             transform: translateY(-1px);
+        }
+        
+        .prompt-item.creation {
+            border-left: 4px solid #48bb78;
+            background: #f0fff4;
+        }
+        
+        .prompt-item.creation:hover {
+            background: #e6fffa;
+            border-color: #38a169;
         }
         
         .prompt-command {
@@ -657,6 +813,15 @@ chat_html_template = '''
             margin-top: 10px;
             font-family: monospace;
             font-size: 14px;
+        }
+        
+        .creation-result {
+            background: #f0fff4;
+            border: 1px solid #9ae6b4;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 10px;
+            border-left: 4px solid #48bb78;
         }
         
         .help-commands {
@@ -896,6 +1061,12 @@ chat_html_template = '''
                 categoryPrompts.forEach(prompt => {
                     const promptDiv = document.createElement('div');
                     promptDiv.className = 'prompt-item';
+                    
+                    // Highlight creation prompts
+                    if (category === '✨ Create New Items' || category === '⚡ Quick Setup') {
+                        promptDiv.classList.add('creation');
+                    }
+                    
                     promptDiv.onclick = () => selectPrompt(prompt.prompt);
                     
                     promptDiv.innerHTML = `
@@ -998,13 +1169,18 @@ chat_html_template = '''
                 return errorMsg;
             }
             
+            // Special formatting for creation results
+            if (result.type === 'agent_creation' || result.type === 'workbench_creation' || result.type === 'task_creation') {
+                return `<div class="creation-result">${result.message}</div>`;
+            }
+            
             if (result.type === 'help') {
                 let html = '<strong>📚 Available Commands:</strong><ul class="help-commands">';
                 result.commands.forEach(cmd => {
                     html += `<li>${cmd}</li>`;
                 });
                 html += '</ul>';
-                html += '<p style="margin-top: 10px;"><em>💡 Tip: Check the sidebar for suggested prompts or type "prompts" to see all suggestions!</em></p>';
+                html += '<p style="margin-top: 10px;"><em>💡 Tip: Check the sidebar for suggested prompts including creation commands!</em></p>';
                 return html;
             }
             

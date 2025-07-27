@@ -36,7 +36,7 @@
         }
         
         .sidebar {
-            width: 300px;
+            width: 320px;
             background: #f8fafc;
             border-right: 1px solid #e2e8f0;
             display: flex;
@@ -95,6 +95,16 @@
             background: #edf2f7;
             border-color: #4299e1;
             transform: translateY(-1px);
+        }
+        
+        .prompt-item.creation {
+            border-left: 4px solid #48bb78;
+            background: #f0fff4;
+        }
+        
+        .prompt-item.creation:hover {
+            background: #e6fffa;
+            border-color: #38a169;
         }
         
         .prompt-command {
@@ -241,6 +251,15 @@
             margin-top: 10px;
             font-family: monospace;
             font-size: 14px;
+        }
+        
+        .creation-result {
+            background: #f0fff4;
+            border: 1px solid #9ae6b4;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 10px;
+            border-left: 4px solid #48bb78;
         }
         
         .help-commands {
@@ -480,6 +499,12 @@
                 categoryPrompts.forEach(prompt => {
                     const promptDiv = document.createElement('div');
                     promptDiv.className = 'prompt-item';
+                    
+                    // Highlight creation prompts
+                    if (category === '✨ Create New Items' || category === '⚡ Quick Setup') {
+                        promptDiv.classList.add('creation');
+                    }
+                    
                     promptDiv.onclick = () => selectPrompt(prompt.prompt);
                     
                     promptDiv.innerHTML = `
@@ -582,13 +607,18 @@
                 return errorMsg;
             }
             
+            // Special formatting for creation results
+            if (result.type === 'agent_creation' || result.type === 'workbench_creation' || result.type === 'task_creation') {
+                return `<div class="creation-result">${result.message}</div>`;
+            }
+            
             if (result.type === 'help') {
                 let html = '<strong>📚 Available Commands:</strong><ul class="help-commands">';
                 result.commands.forEach(cmd => {
                     html += `<li>${cmd}</li>`;
                 });
                 html += '</ul>';
-                html += '<p style="margin-top: 10px;"><em>💡 Tip: Check the sidebar for suggested prompts or type "prompts" to see all suggestions!</em></p>';
+                html += '<p style="margin-top: 10px;"><em>💡 Tip: Check the sidebar for suggested prompts including creation commands!</em></p>';
                 return html;
             }
             
