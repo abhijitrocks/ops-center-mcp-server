@@ -1,0 +1,30 @@
+{
+  "environments": {
+    "local": {
+      "server_url": "http://localhost:8000",
+      "timeout": 30,
+      "description": "Local development server"
+    },
+    "staging": {
+      "server_url": "https://staging-mcp-server.example.com",
+      "timeout": 60,
+      "description": "Staging environment"
+    },
+    "production": {
+      "server_url": "https://mcp-server-xasj.onrender.com",
+      "timeout": 60,
+      "description": "Production server on Render"
+    }
+  },
+  "default_environment": "local",
+  "agents": {
+    "test_agent": {
+      "name": "test_agent",
+      "description": "Test agent for development"
+    },
+    "production_agent": {
+      "name": "production_agent",
+      "description": "Production agent"
+    }
+  }
+}
