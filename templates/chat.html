@@ -1273,20 +1273,22 @@ Here's what you can do:
         }
         
         function sendMessage() {
+            console.log('🚀 sendMessage called');
             const input = document.getElementById('messageInput');
             const sendButton = document.getElementById('sendButton');
             const message = input.value.trim();
             
+            console.log('📝 Message:', message);
+            console.log('🔧 Fallback mode:', window.fallbackMode);
+            
             if (message === '') {
+                console.log('❌ Empty message, returning');
                 return;
             }
             
-            // Check if we can use WebSocket or need fallback
-            if (!window.fallbackMode && socket && socket.readyState === WebSocket.OPEN) {
-                sendViaWebSocket(message, input, sendButton);
-            } else {
-                sendViaHTTP(message, input, sendButton);
-            }
+            // Always use HTTP in our current setup
+            console.log('📡 Using HTTP API mode');
+            sendViaHTTP(message, input, sendButton);
         }
         
         function sendViaWebSocket(message, input, sendButton) {
@@ -1325,6 +1327,8 @@ Here's what you can do:
         }
         
         function sendViaHTTP(message, input, sendButton) {
+            console.log('📡 sendViaHTTP called with message:', message);
+            
             // Add to message history
             messageHistory.unshift(message);
             if (messageHistory.length > 50) {
@@ -1335,8 +1339,10 @@ Here's what you can do:
             // Disable send button temporarily
             sendButton.disabled = true;
             sendButton.innerHTML = '<span class="send-icon">⏳</span><span>Sending</span>';
+            console.log('🔧 Send button disabled, showing sending state');
             
             // Display user message
+            console.log('💬 Displaying user message');
             displayMessage({
                 type: 'user',
                 message: message,
@@ -1344,6 +1350,7 @@ Here's what you can do:
             });
             
             // Send via HTTP API
+            console.log('🌐 Sending to /api/command');
             fetch('/api/command', {
                 method: 'POST',
                 headers: {
@@ -1354,8 +1361,12 @@ Here's what you can do:
                     user: userId
                 })
             })
-            .then(response => response.json())
+            .then(response => {
+                console.log('✅ Got response:', response.status);
+                return response.json();
+            })
             .then(data => {
+                console.log('📦 Response data:', data);
                 // Display the response
                 displayMessage({
                     type: 'response',
@@ -1363,9 +1374,10 @@ Here's what you can do:
                     result: data,
                     timestamp: new Date().toISOString()
                 });
+                console.log('💬 Response message displayed');
             })
             .catch(error => {
-                console.error('HTTP API error:', error);
+                console.error('❌ HTTP API error:', error);
                 displayMessage({
                     type: 'response',
                     command: message,
