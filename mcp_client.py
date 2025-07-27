@@ -46,7 +46,7 @@ class MCPClient:
     
     def _handle_rpc_response(self, response: Dict) -> Any:
         """Handle JSON-RPC response and extract result or raise error"""
-        if "error" in response:
+        if "error" in response and response["error"] is not None:
             error = response["error"]
             raise Exception(f"RPC Error {error.get('code', 'Unknown')}: {error.get('message', 'Unknown error')}")
         return response.get("result")
@@ -139,16 +139,34 @@ class MCPClient:
     # Health check and utility methods
     def health_check(self) -> Dict:
         """Check if the server is healthy"""
-        response = requests.get(f"{self.base_url}/health", timeout=self.config.timeout)
-        response.raise_for_status()
-        return response.json()
+        try:
+            # Try the /health endpoint first
+            response = requests.get(f"{self.base_url}/health", timeout=self.config.timeout)
+            response.raise_for_status()
+            return response.json()
+        except:
+            # Fallback to RPC method to test connectivity
+            try:
+                result = self._sync_rpc_call("get_agent_task_count", {"agent": "health_check", "days": 1})
+                return {"status": "OK", "rpc_working": True}
+            except Exception as e:
+                return {"status": "ERROR", "error": str(e)}
     
     async def async_health_check(self) -> Dict:
         """Async health check"""
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.config.timeout)) as session:
-            async with session.get(f"{self.base_url}/health") as response:
-                response.raise_for_status()
-                return await response.json()
+        try:
+            # Try the /health endpoint first
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.config.timeout)) as session:
+                async with session.get(f"{self.base_url}/health") as response:
+                    response.raise_for_status()
+                    return await response.json()
+        except:
+            # Fallback to RPC method to test connectivity
+            try:
+                result = await self._async_rpc_call("get_agent_task_count", {"agent": "health_check", "days": 1})
+                return {"status": "OK", "rpc_working": True}
+            except Exception as e:
+                return {"status": "ERROR", "error": str(e)}
 
     def get_server_info(self) -> Dict:
         """Get server information from OpenAPI spec"""
