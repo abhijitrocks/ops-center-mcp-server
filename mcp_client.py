@@ -105,6 +105,18 @@ class MCPClient:
             params["agent"] = agent
         return self._sync_rpc_call("update_task_status", params)
     
+    def list_agents(self, limit: int = 100) -> Dict:
+        """List all agents in the system"""
+        return self._sync_rpc_call("list_agents", {"limit": limit})
+    
+    def get_agent_info(self, agent: str) -> Dict:
+        """Get detailed information about a specific agent"""
+        return self._sync_rpc_call("get_agent_info", {"agent": agent})
+    
+    def get_agent_stats(self, days: int = 7) -> Dict:
+        """Get statistics for all agents in the last N days"""
+        return self._sync_rpc_call("get_agent_stats", {"days": days})
+    
     # Async methods
     async def async_get_agent_task_count(self, agent: str, days: int = 3) -> Dict:
         """Async version of get_agent_task_count"""
@@ -135,6 +147,18 @@ class MCPClient:
         if agent is not None:
             params["agent"] = agent
         return await self._async_rpc_call("update_task_status", params)
+    
+    async def async_list_agents(self, limit: int = 100) -> Dict:
+        """Async version of list_agents"""
+        return await self._async_rpc_call("list_agents", {"limit": limit})
+    
+    async def async_get_agent_info(self, agent: str) -> Dict:
+        """Async version of get_agent_info"""
+        return await self._async_rpc_call("get_agent_info", {"agent": agent})
+    
+    async def async_get_agent_stats(self, days: int = 7) -> Dict:
+        """Async version of get_agent_stats"""
+        return await self._async_rpc_call("get_agent_stats", {"days": days})
 
     # Health check and utility methods
     def health_check(self) -> Dict:
@@ -184,7 +208,8 @@ def main():
     parser.add_argument("--server", default="http://localhost:8000", help="Server URL")
     parser.add_argument("--agent", required=True, help="Agent name")
     parser.add_argument("--action", choices=[
-        "health", "task_count", "recent_tasks", "avg_time", "assign", "update_status"
+        "health", "task_count", "recent_tasks", "avg_time", "assign", "update_status",
+        "list_agents", "agent_info", "agent_stats"
     ], required=True, help="Action to perform")
     parser.add_argument("--task-id", type=int, help="Task ID (for assign/update)")
     parser.add_argument("--status", default="completed", help="Status (for update)")
@@ -227,6 +252,18 @@ def main():
                 return
             result = client.update_task_status(args.task_id, args.agent, args.status)
             print("Task Status Updated:", json.dumps(result, indent=2))
+            
+        elif args.action == "list_agents":
+            result = client.list_agents(limit=args.limit if hasattr(args, 'limit') else 100)
+            print("Agents List:", json.dumps(result, indent=2))
+            
+        elif args.action == "agent_info":
+            result = client.get_agent_info(args.agent)
+            print("Agent Info:", json.dumps(result, indent=2))
+            
+        elif args.action == "agent_stats":
+            result = client.get_agent_stats(days=args.days)
+            print("Agent Statistics:", json.dumps(result, indent=2))
             
     except Exception as e:
         print(f"Error: {e}")
