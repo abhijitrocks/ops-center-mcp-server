@@ -61,6 +61,7 @@ class ConnectionManager:
         self.active_connections: List[WebSocket] = []
         self.mcp_client = None
         self.role_manager = None
+        self.last_command_context = {}  # Store context for follow-up commands
         
         if MCP_AVAILABLE:
             try:
@@ -212,6 +213,42 @@ class ConnectionManager:
         except Exception as e:
             return {"error": f"Failed to create task: {str(e)}"}
 
+    def get_all_agent_workbench_assignments(self) -> Dict[str, Any]:
+        """Get a summary of all agents and their workbench assignments"""
+        try:
+            conn = sqlite3.connect("ops_center.db")
+            cursor = conn.cursor()
+            
+            # Get all agents
+            cursor.execute('SELECT DISTINCT agent FROM usertaskinfo WHERE agent != "" ORDER BY agent')
+            agents = [row[0] for row in cursor.fetchall()]
+            
+            # Get workbench assignments for each agent
+            agent_assignments = {}
+            for agent in agents:
+                if self.role_manager:
+                    roles = self.role_manager.get_agent_workbench_roles(agent)
+                    agent_assignments[agent] = roles
+                else:
+                    agent_assignments[agent] = []
+            
+            # Get workbench names for reference
+            cursor.execute('SELECT id, name FROM workbench ORDER BY id')
+            workbench_names = {row[0]: row[1] for row in cursor.fetchall()}
+            
+            conn.close()
+            
+            return {
+                "agents": agents,
+                "assignments": agent_assignments,
+                "workbench_names": workbench_names,
+                "total_agents": len(agents),
+                "context": "Shows all agent workbench assignments in response to contextual query"
+            }
+            
+        except Exception as e:
+            return {"error": f"Could not get agent assignments: {str(e)}"}
+
     def get_suggested_prompts(self) -> List[Dict[str, str]]:
         """Get comprehensive suggested prompts for all features"""
         prompts = [
@@ -262,6 +299,13 @@ class ConnectionManager:
             {"category": "❓ Question Style", "prompt": "who are the agents ?", "description": "Show all agents (question style)"},
             {"category": "❓ Question Style", "prompt": "tell me about Chitra", "description": "Get details about Chitra (conversational)"},
             {"category": "❓ Question Style", "prompt": "what workbenches exist ?", "description": "List all workbenches (question style)"},
+            
+            # Contextual Follow-up Commands
+            {"category": "🔗 Contextual Commands", "prompt": "their assigned workbenches", "description": "Show workbench assignments (after listing agents)"},
+            {"category": "🔗 Contextual Commands", "prompt": "where are they assigned", "description": "Show assignments (contextual follow-up)"},
+            {"category": "🔗 Contextual Commands", "prompt": "their roles", "description": "Show all agent roles (contextual)"},
+            {"category": "🔗 Contextual Commands", "prompt": "workbench assignments", "description": "Show all agent-workbench assignments"},
+            {"category": "🔗 Contextual Commands", "prompt": "assigned to", "description": "Show assignments (short contextual)"},
             
             # Analytics & Reports
             {"category": "📊 Analytics & Reports", "prompt": "coverage", "description": "Show role coverage across all workbenches"},
@@ -328,6 +372,9 @@ class ConnectionManager:
                 return {
                     "type": "help",
                     "commands": [
+                        "💡 This is a rule-based command processor (not an LLM)",
+                        "🔗 Supports contextual follow-up commands",
+                        "",
                         "help - Show available commands",
                         "agents / list agents / show agents - List all agents",
                         "workbenches / list workbenches / show workbenches - List all workbenches",
@@ -341,7 +388,12 @@ class ConnectionManager:
                         "assign-role <agent> <workbench_id> <role> - Assign workbench role",
                         "agent-roles <agent> / show agent roles <agent> - Show agent's roles",
                         "coverage / show coverage - Show role coverage report",
-                        "stats <agent> - Get agent statistics"
+                        "stats <agent> - Get agent statistics",
+                        "",
+                        "🔗 Contextual Commands (after listing agents):",
+                        "their assigned workbenches - Show all agent assignments",
+                        "where are they assigned - Show workbench assignments",
+                        "their roles - Show all agent roles"
                     ]
                 }
             
@@ -375,6 +427,15 @@ class ConnectionManager:
                         agent_count = len(result.get('agents', []))
                         result['count_query'] = True
                         result['message'] = f"There are {agent_count} agents in the system"
+                    
+                    # Store context for follow-up commands
+                    self.last_command_context = {
+                        "type": "agents_listed",
+                        "agents": result.get('agents', []),
+                        "command": original_command,
+                        "timestamp": datetime.now()
+                    }
+                    
                     return {"type": "agents", "data": result}
                 else:
                     demo_result = self.get_demo_data("agents")
@@ -383,6 +444,15 @@ class ConnectionManager:
                         agent_count = len(demo_result.get('data', {}).get('agents', []))
                         demo_result['data']['count_query'] = True
                         demo_result['data']['message'] = f"There are {agent_count} agents in the system"
+                    
+                    # Store context for follow-up commands
+                    self.last_command_context = {
+                        "type": "agents_listed",
+                        "agents": demo_result.get('data', {}).get('agents', []),
+                        "command": original_command,
+                        "timestamp": datetime.now()
+                    }
+                    
                     return demo_result
             
             elif action == "workbenches":
@@ -476,6 +546,26 @@ class ConnectionManager:
                 else:
                     return {"error": "Workbench role manager not available"}
             
+            elif action == "agent-workbench-summary":
+                # Handle contextual commands like "their assigned workbenches"
+                if self.role_manager:
+                    try:
+                        # Get all agents and their workbench assignments
+                        agents_summary = self.get_all_agent_workbench_assignments()
+                        
+                        # Store context for future commands
+                        self.last_command_context = {
+                            "type": "agent_workbench_summary",
+                            "command": original_command,
+                            "timestamp": datetime.now()
+                        }
+                        
+                        return {"type": "agent_workbench_summary", "data": agents_summary}
+                    except Exception as e:
+                        return {"error": f"Could not get agent workbench assignments: {e}"}
+                else:
+                    return {"error": "Workbench role manager not available"}
+            
             elif action == "tasks":
                 agent = self.extract_agent_name(original_command, parts)
                 if not agent:
@@ -539,8 +629,16 @@ class ConnectionManager:
 
     def normalize_command(self, command_lower: str, parts: List[str]) -> str:
         """Normalize natural language commands to standard actions"""
+        # Handle contextual/pronoun commands
+        if any(phrase in command_lower for phrase in ['their assigned', 'their workbenches', 'their roles', 'assigned workbenches', 'workbench assignments']):
+            return "agent-workbench-summary"  # New command for showing all agent workbench assignments
+        elif any(phrase in command_lower for phrase in ['they are assigned to', 'where are they assigned', 'their assignments']):
+            return "agent-workbench-summary"
+        elif command_lower in ['their workbenches', 'workbenches', 'assignments', 'where are they', 'assigned to']:
+            return "agent-workbench-summary"
+        
         # Handle question-style commands
-        if any(phrase in command_lower for phrase in ['how many agents', 'count agents', 'number of agents', 'total agents']):
+        elif any(phrase in command_lower for phrase in ['how many agents', 'count agents', 'number of agents', 'total agents']):
             return "agents"
         elif any(phrase in command_lower for phrase in ['how many workbenches', 'count workbenches', 'number of workbenches', 'total workbenches']):
             return "workbenches"
@@ -1628,6 +1726,32 @@ chat_html_template = '''
                     </div>`;
                 });
                 html += '</div>';
+                return html;
+            }
+            
+            if (result.type === 'agent_workbench_summary') {
+                const data = result.data;
+                let html = '<strong>🏢 Agent Workbench Assignments:</strong><br>';
+                html += `<em>💬 ${data.context}</em><div class="workbench-list">`;
+                
+                Object.entries(data.assignments).forEach(([agent, roles]) => {
+                    html += `<div class="workbench-item">
+                        <strong>👤 ${agent}:</strong><br>`;
+                    
+                    if (roles.length === 0) {
+                        html += '<div class="role-assignment" style="color: #718096;">No workbench assignments</div>';
+                    } else {
+                        roles.forEach(role => {
+                            html += `<div class="role-assignment">
+                                📋 ${role.workbench_name}: <strong>${role.role}</strong>
+                            </div>`;
+                        });
+                    }
+                    html += '</div>';
+                });
+                
+                html += '</div>';
+                html += `<br><em>Total agents: ${data.total_agents}</em>`;
                 return html;
             }
             
