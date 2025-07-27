@@ -224,6 +224,7 @@ def main():
     parser.add_argument("--days", type=int, default=3, help="Days for task count")
     parser.add_argument("--limit", type=int, default=5, help="Limit for recent tasks")
     parser.add_argument("--tenant-id", type=int, help="Tenant ID (for tags)")
+    parser.add_argument("--workbench-id", type=int, help="Workbench ID (for assign)")
     
     args = parser.parse_args()
     
@@ -251,7 +252,8 @@ def main():
             if not args.task_id:
                 print("Error: --task-id is required for assign action")
                 return
-            result = client.assign_task(args.agent, args.task_id)
+            workbench_id = getattr(args, 'workbench_id', None)
+            result = client.assign_task(args.agent, args.task_id, workbench_id)
             print("Task Assigned:", json.dumps(result, indent=2))
             
         elif args.action == "update_status":
