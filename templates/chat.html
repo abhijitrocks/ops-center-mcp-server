@@ -1123,22 +1123,38 @@ Here's what you can do:
                 timestamp: new Date().toISOString()
             });
             
-            // Enable fallback communication
+            // Enable fallback communication IMMEDIATELY
             window.fallbackMode = true;
             
-            // Force enable input elements in case they weren't enabled
-            setTimeout(() => {
+            // AGGRESSIVELY enable input elements with multiple attempts
+            const enableInputs = () => {
+                console.log('🔧 FORCE ENABLING INPUTS...');
                 const messageInput = document.getElementById('messageInput');
                 const sendButton = document.getElementById('sendButton');
-                if (messageInput && messageInput.disabled) {
+                
+                if (messageInput) {
                     messageInput.disabled = false;
-                    messageInput.placeholder = "Type your message here... (HTTP API mode)";
+                    messageInput.placeholder = "Type your command here... (Ready!)";
+                    messageInput.style.opacity = '1';
+                    messageInput.style.pointerEvents = 'auto';
+                    messageInput.focus();
+                    console.log('✅ Input enabled and focused');
                 }
-                if (sendButton && sendButton.disabled) {
+                
+                if (sendButton) {
                     sendButton.disabled = false;
                     sendButton.innerHTML = '<span class="send-icon">📤</span><span>Send</span>';
+                    sendButton.style.opacity = '1';
+                    sendButton.style.pointerEvents = 'auto';
+                    console.log('✅ Send button enabled');
                 }
-            }, 100);
+            };
+            
+            // Enable immediately and retry multiple times
+            enableInputs();
+            setTimeout(enableInputs, 50);
+            setTimeout(enableInputs, 200);
+            setTimeout(enableInputs, 500);
         }
         
         // Default prompts in case API fails
@@ -1776,37 +1792,23 @@ Here's what you can do:
             }
         });
         
-        // Check if we're on a cloud platform
+        // IMMEDIATE FALLBACK - Always enable interface within 500ms
+        console.log('🚨 IMMEDIATE FALLBACK MODE - Enabling interface now');
+        setTimeout(() => {
+            console.log('🔧 Force-enabling interface regardless of connection status');
+            enableFallbackMode();
+        }, 500);
+        
+        // Also attempt connection in parallel (but don't wait for it)
         const isCloudDeployment = window.location.hostname.includes('.onrender.com') || 
                                  window.location.hostname.includes('.herokuapp.com') ||
                                  window.location.hostname.includes('.railway.app') ||
                                  window.location.hostname.includes('.vercel.app') ||
                                  window.location.hostname.includes('.netlify.app');
         
-        if (isCloudDeployment) {
-            console.log('🌐 Cloud deployment detected - enabling fallback mode immediately');
-            setTimeout(() => enableFallbackMode(), 100);
-        } else {
-            console.log('🏠 Local development detected - attempting WebSocket with aggressive fallback');
-            // Connect on page load for local development
-            connect();
-            
-            // Aggressive fallback - enable interface quickly regardless of WebSocket status
-            setTimeout(() => {
-                if (!socket || socket.readyState !== WebSocket.OPEN) {
-                    console.log('WebSocket not ready after 1 second, enabling fallback mode for local dev');
-                    enableFallbackMode();
-                }
-            }, 1000);
-            
-            // Backup fallback in case the first one fails
-            setTimeout(() => {
-                const messageInput = document.getElementById('messageInput');
-                if (messageInput && messageInput.disabled) {
-                    console.log('🚨 Emergency fallback - force enabling interface');
-                    enableFallbackMode();
-                }
-            }, 3000);
+        if (!isCloudDeployment) {
+            console.log('🏠 Local development - attempting WebSocket in background');
+            setTimeout(() => connect(), 100);
         }
     </script>
 </body>
