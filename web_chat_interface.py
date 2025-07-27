@@ -1717,13 +1717,18 @@ chat_html_template = '''
             z-index: 40;
             backdrop-filter: blur(8px);
             border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
         }
         
-        .connected {
+        .connection-status.connected {
             background: rgba(34, 197, 94, 0.9);
         }
         
-        .disconnected {
+        .connection-status.connecting {
+            background: rgba(245, 158, 11, 0.9);
+        }
+        
+        .connection-status.disconnected {
             background: rgba(239, 68, 68, 0.9);
         }
         
@@ -2020,13 +2025,7 @@ chat_html_template = '''
         </div>
         
         <div class="status-section">
-            <div class="status-toggle" onclick="toggleDemo()" id="demoToggle">
-                <span>🔗</span>
-                <span>Connected</span>
-            </div>
-            <div class="status-badge badge-cloud" id="cloudBadge" style="display: none;">Cloud Deployed</div>
-            <div class="status-badge badge-demo" id="demoBadge" style="display: none;">Demo Mode</div>
-            <div class="status-badge badge-error" id="errorBadge" style="display: none;">Offline</div>
+            <!-- Consolidated into single connection status badge below -->
         </div>
     </div>
     
@@ -2082,8 +2081,8 @@ chat_html_template = '''
     </div>
     
     <!-- Connection Status -->
-    <div class="connection-status disconnected" id="connectionStatus">
-        🔴 Connecting...
+    <div class="connection-status connecting" id="connectionStatus">
+        🟡 Connecting...
     </div>
     
     <!-- Floating Action Buttons -->
@@ -2211,6 +2210,8 @@ Built with modern web technologies for optimal performance.`,
             const wsUrl = `${protocol}//${window.location.host}/ws/${userId}`;
             
             console.log('Attempting WebSocket connection to:', wsUrl);
+            updateConnectionStatus('connecting');
+            
             socket = new WebSocket(wsUrl);
             
             // Set a timeout to detect connection issues
@@ -2222,7 +2223,7 @@ Built with modern web technologies for optimal performance.`,
             socket.onopen = function(event) {
                 clearTimeout(connectionTimeout);
                 console.log('WebSocket connected successfully');
-                updateConnectionStatus(true);
+                updateConnectionStatus('connected');
                 
                 // Load suggested prompts
                 fetch('/api/prompts')
@@ -2270,7 +2271,7 @@ Here's what you can do:
             
             socket.onclose = function(event) {
                 console.log('WebSocket connection closed:', event.code, event.reason);
-                updateConnectionStatus(false);
+                updateConnectionStatus('connecting');
                 
                 // If it's not a normal closure, enable fallback mode after a few failed attempts
                 if (event.code !== 1000) {
@@ -2285,7 +2286,7 @@ Here's what you can do:
             
             socket.onerror = function(error) {
                 console.error('WebSocket error:', error);
-                updateConnectionStatus(false);
+                updateConnectionStatus('connecting');
                 // Enable fallback mode immediately on WebSocket error
                 setTimeout(() => {
                     console.log('Enabling fallback mode due to WebSocket error');
@@ -2299,9 +2300,7 @@ Here's what you can do:
             console.log('🔄 Enabling fallback mode - interface will work without WebSocket');
             
             // Update connection status to show we're in fallback mode
-            const statusEl = document.getElementById('connectionStatus');
-            statusEl.textContent = '🔶 Fallback Mode';
-            statusEl.className = 'connection-status disconnected';
+            updateConnectionStatus('fallback');
             
             // Load suggested prompts directly
             fetch('/api/prompts')
@@ -2368,34 +2367,23 @@ Here's what you can do:
             displaySuggestedPrompts(defaultPrompts);
         }
         
-        function updateConnectionStatus(connected) {
+        function updateConnectionStatus(status) {
             const statusEl = document.getElementById('connectionStatus');
-            const demoToggle = document.getElementById('demoToggle');
-            const cloudBadge = document.getElementById('cloudBadge');
-            const demoBadge = document.getElementById('demoBadge');
-            const errorBadge = document.getElementById('errorBadge');
+            if (!statusEl) return;
             
-            if (connected) {
+            // Handle different status types
+            if (status === 'connected' || status === true) {
                 statusEl.textContent = '🟢 Connected';
                 statusEl.className = 'connection-status connected';
-                demoToggle.innerHTML = '<span>🔗</span><span>Connected</span>';
-                
-                // Show appropriate badges
-                if (isCloudDeployment) {
-                    cloudBadge.style.display = 'block';
-                }
-                if (!mcpAvailable) {
-                    demoBadge.style.display = 'block';
-                }
-                errorBadge.style.display = 'none';
+            } else if (status === 'connecting') {
+                statusEl.textContent = '🟡 Connecting...';
+                statusEl.className = 'connection-status connecting';
+            } else if (status === 'fallback') {
+                statusEl.textContent = '🔶 HTTP Mode';
+                statusEl.className = 'connection-status connecting';
             } else {
                 statusEl.textContent = '🔴 Disconnected';
                 statusEl.className = 'connection-status disconnected';
-                demoToggle.innerHTML = '<span>⚠️</span><span>Offline</span>';
-                
-                cloudBadge.style.display = 'none';
-                demoBadge.style.display = 'none';
-                errorBadge.style.display = 'block';
             }
         }
         
@@ -2623,7 +2611,7 @@ Here's what you can do:
                 `;
                 
                 // Update status indicators
-                setTimeout(() => updateConnectionStatus(true), 100);
+                setTimeout(() => updateConnectionStatus('connected'), 100);
             } else if (data.type === 'response') {
                 className += 'response';
                 content = `
