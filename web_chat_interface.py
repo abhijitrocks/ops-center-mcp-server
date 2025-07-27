@@ -307,6 +307,12 @@ class ConnectionManager:
             {"category": "🔗 Contextual Commands", "prompt": "workbench assignments", "description": "Show all agent-workbench assignments"},
             {"category": "🔗 Contextual Commands", "prompt": "assigned to", "description": "Show assignments (short contextual)"},
             
+            # Proper Naming Examples
+            {"category": "📝 Proper Naming", "prompt": "create workbench CustomerService \"Handle customer inquiries\"", "description": "Example of proper workbench naming"},
+            {"category": "📝 Proper Naming", "prompt": "create agent TechnicalSupport", "description": "Example of proper agent naming"},
+            {"category": "📝 Proper Naming", "prompt": "create workbench Finance \"Financial operations and reporting\"", "description": "Another workbench naming example"},
+            {"category": "📝 Proper Naming", "prompt": "create agent SalesManager", "description": "Another agent naming example"},
+            
             # Analytics & Reports
             {"category": "📊 Analytics & Reports", "prompt": "coverage", "description": "Show role coverage across all workbenches"},
             
@@ -404,13 +410,61 @@ class ConnectionManager:
             elif action == "create-agent":
                 agent_name = self.extract_create_agent_name(original_command, parts)
                 if not agent_name:
-                    return {"error": "Please specify agent name. Example: create-agent NewAgent"}
+                    # Check if user used invalid words like "a", "the", etc.
+                    invalid_words = ['a', 'an', 'the', 'new', 'some', 'this', 'that']
+                    used_invalid = any(word in original_command.lower() for word in invalid_words)
+                    
+                    if used_invalid:
+                        return {
+                            "error": "Please provide a proper agent name (not 'a', 'the', etc.)",
+                            "suggestion": "Try: 'create agent CustomerServiceAgent' or 'create agent DataAnalyst'",
+                            "examples": [
+                                "create agent SalesManager",
+                                "create agent TechnicalSupport",
+                                "create agent ProjectCoordinator",
+                                "create agent QualityAssurance"
+                            ]
+                        }
+                    else:
+                        return {
+                            "error": "Please specify an agent name",
+                            "suggestion": "Format: create agent <n>",
+                            "examples": [
+                                "create agent NewAgent",
+                                "create agent DataAnalyst",
+                                "create agent ProjectManager"
+                            ]
+                        }
                 return self.create_agent(agent_name, user)
             
             elif action == "create-workbench":
                 workbench_name, description = self.extract_create_workbench_params(original_command, parts)
                 if not workbench_name:
-                    return {"error": "Please specify workbench name. Example: create-workbench Support \"Customer support\""}
+                    # Check if user used invalid words like "a", "the", etc.
+                    invalid_words = ['a', 'an', 'the', 'new', 'some', 'this', 'that']
+                    used_invalid = any(word in original_command.lower() for word in invalid_words)
+                    
+                    if used_invalid:
+                        return {
+                            "error": "Please provide a proper workbench name (not 'a', 'the', etc.)",
+                            "suggestion": "Try: 'create workbench CustomerService \"Handle customer inquiries\"' or 'create workbench Marketing \"Marketing campaigns\"'",
+                            "examples": [
+                                "create workbench Support \"Customer support operations\"",
+                                "create workbench Finance \"Financial operations\"", 
+                                "create workbench HR \"Human resources management\"",
+                                "create workbench IT \"IT operations and support\""
+                            ]
+                        }
+                    else:
+                        return {
+                            "error": "Please specify a workbench name",
+                            "suggestion": "Format: create workbench <Name> \"<Description>\"",
+                            "examples": [
+                                "create workbench Support \"Customer support operations\"",
+                                "create workbench Marketing \"Marketing campaigns\"",
+                                "create workbench Finance \"Financial operations\""
+                            ]
+                        }
                 return self.create_workbench(workbench_name, description, user)
             
             elif action == "create-task":
@@ -704,11 +758,19 @@ class ConnectionManager:
             words = command.split()
             for i, word in enumerate(words):
                 if word.lower() in ['agent'] and i + 1 < len(words):
-                    return words[i + 1]
+                    agent_name = words[i + 1]
+                    # Validate agent name - reject common words/articles
+                    if agent_name.lower() in ['a', 'an', 'the', 'new', 'some', 'this', 'that']:
+                        return ""  # Invalid name
+                    return agent_name
         
         # Handle standard format
         if len(parts) > 1:
-            return parts[1]
+            agent_name = parts[1]
+            # Validate agent name - reject common words/articles
+            if agent_name.lower() in ['a', 'an', 'the', 'new', 'some', 'this', 'that']:
+                return ""  # Invalid name
+            return agent_name
         
         return ""
 
@@ -721,11 +783,19 @@ class ConnectionManager:
             # Extract after "workbench"
             match = re.search(r'workbench\s+(\w+)(?:\s+"([^"]*)")?', command, re.IGNORECASE)
             if match:
-                return match.group(1), match.group(2) or ""
+                workbench_name = match.group(1)
+                # Validate workbench name - reject common words/articles
+                if workbench_name.lower() in ['a', 'an', 'the', 'new', 'some', 'this', 'that']:
+                    return "", ""  # Invalid name, will trigger error asking for proper name
+                return workbench_name, match.group(2) or ""
         
         # Handle standard format
         if len(parts) > 1:
             workbench_name = parts[1]
+            # Validate workbench name - reject common words/articles
+            if workbench_name.lower() in ['a', 'an', 'the', 'new', 'some', 'this', 'that']:
+                return "", ""  # Invalid name, will trigger error asking for proper name
+            
             description = ""
             if len(parts) > 2:
                 description = " ".join(parts[2:]).strip('"\'')
@@ -1595,6 +1665,22 @@ chat_html_template = '''
         function formatResult(result) {
             if (result.error) {
                 let errorMsg = `<span style="color: #f56565;">❌ Error: ${result.error}</span>`;
+                
+                // Add suggestion if available
+                if (result.suggestion) {
+                    errorMsg += `<br><br><strong>💡 Suggestion:</strong> ${result.suggestion}`;
+                }
+                
+                // Add examples if available
+                if (result.examples && result.examples.length > 0) {
+                    errorMsg += '<br><br><strong>📝 Examples:</strong><ul class="help-commands">';
+                    result.examples.forEach(example => {
+                        errorMsg += `<li style="cursor: pointer;" onclick="selectPrompt('${example}')">${example}</li>`;
+                    });
+                    errorMsg += '</ul>';
+                    errorMsg += '<br><em>💡 Click any example to try it!</em>';
+                }
+                
                 if (result.demo) {
                     errorMsg += '<br><span class="demo-indicator">Running in demo mode</span>';
                 }
