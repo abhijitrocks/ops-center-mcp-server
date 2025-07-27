@@ -313,108 +313,34 @@ class ConnectionManager:
         return {"message": f"Executed command: {command}", "action": action}
 
     def get_suggested_prompts(self) -> List[Dict[str, str]]:
-        """Get comprehensive suggested prompts for all features"""
+        """Get organized suggested prompts with clear grouping and descriptions"""
         prompts = [
             # Getting Started
-            {"category": "🚀 Getting Started", "prompt": "help", "description": "Show all available commands"},
-            {"category": "🚀 Getting Started", "prompt": "how many agents are there ?", "description": "Count total agents in the system (question style)"},
-            {"category": "🚀 Getting Started", "prompt": "show list of all agents", "description": "List all agents in the system (natural language)"},
-            {"category": "🚀 Getting Started", "prompt": "show list of all workbenches", "description": "Show all workbenches with descriptions (natural language)"},
-            {"category": "🚀 Getting Started", "prompt": "agents", "description": "List all agents (short command)"},
-            {"category": "🚀 Getting Started", "prompt": "workbenches", "description": "Show all workbenches (short command)"},
+            {"category": "🚀 Getting Started", "prompt": "help", "description": "View all available commands"},
+            {"category": "🚀 Getting Started", "prompt": "how many agents are there?", "description": "Count total agents"},
+            {"category": "🚀 Getting Started", "prompt": "show list of all agents", "description": "Show all agents in natural language"},
+            {"category": "🚀 Getting Started", "prompt": "workbenches", "description": "Quick workbench list"},
             
-            # Creation Operations
-            {"category": "✨ Create New Items", "prompt": "create agent NewAgent", "description": "Create a new agent using natural language"},
-            {"category": "✨ Create New Items", "prompt": "create-agent DataAnalyst", "description": "Create a data analyst agent (short command)"},
-            {"category": "✨ Create New Items", "prompt": "create workbench Support \"Customer support\"", "description": "Create Support workbench (natural language)"},
-            {"category": "✨ Create New Items", "prompt": "create-workbench Compliance \"Regulatory compliance tasks\"", "description": "Create a Compliance workbench (short command)"},
-            {"category": "✨ Create New Items", "prompt": "create task 6001", "description": "Create a new task using natural language"},
-            {"category": "✨ Create New Items", "prompt": "create-task 6002 Chitra 1", "description": "Create task 6002 assigned to Chitra in Dispute workbench"},
+            # Create New Items
+            {"category": "✨ Create New Items", "prompt": "create agent NewAgent", "description": "Add a new agent"},
+            {"category": "✨ Create New Items", "prompt": "create-agent DataAnalyst", "description": "Add an agent via short command"},
+            {"category": "✨ Create New Items", "prompt": "create workbench Support \"Customer support\"", "description": "Build a Support workbench"},
+            {"category": "✨ Create New Items", "prompt": "create-task 6002 Chitra 1", "description": "Create a task and assign it"},
             
             # Agent Management
-            {"category": "👥 Agent Management", "prompt": "details about abhijit", "description": "Get detailed information about abhijit (question style)"},
-            {"category": "👥 Agent Management", "prompt": "show agent roles abhijit", "description": "Show all roles for abhijit (natural language)"},
-            {"category": "👥 Agent Management", "prompt": "agent-roles Chitra", "description": "Show all roles for Chitra (short command)"},
-            {"category": "👥 Agent Management", "prompt": "info about ashish", "description": "Get information about ashish (natural language)"},
-            {"category": "👥 Agent Management", "prompt": "roles for ashish", "description": "Show roles for ashish (natural language)"},
+            {"category": "👥 Agent Management", "prompt": "details about abhijit", "description": "Full details of an agent"},
+            {"category": "👥 Agent Management", "prompt": "show agent roles abhijit", "description": "List roles for an agent"},
+            {"category": "👥 Agent Management", "prompt": "agent-roles Chitra", "description": "Quick role summary"},
             
             # Workbench Operations
-            {"category": "🏢 Workbench Operations", "prompt": "show roles 1", "description": "View roles in Dispute workbench (natural language)"},
-            {"category": "🏢 Workbench Operations", "prompt": "roles 2", "description": "View roles in Transaction workbench (short command)"},
-            {"category": "🏢 Workbench Operations", "prompt": "show roles 3", "description": "View roles in Account Holder workbench (natural language)"},
-            {"category": "🏢 Workbench Operations", "prompt": "roles 4", "description": "View roles in Loan workbench (short command)"},
+            {"category": "🏢 Workbench Operations", "prompt": "show roles 1", "description": "View Dispute workbench roles"},
+            {"category": "🏢 Workbench Operations", "prompt": "roles 2", "description": "View Transaction workbench roles"},
+            {"category": "🏢 Workbench Operations", "prompt": "show roles 3", "description": "View Account Holder workbench roles"},
+            {"category": "🏢 Workbench Operations", "prompt": "roles 4", "description": "View Loan workbench roles"},
             
-            # Role Management
-            {"category": "🎭 Role Management", "prompt": "assign-role bulk_agent 2 Viewer", "description": "Assign bulk_agent as Viewer in Transaction workbench"},
-            {"category": "🎭 Role Management", "prompt": "assign-role ramesh 3 Assessor", "description": "Assign ramesh as Assessor in Account Holder workbench"},
-            {"category": "🎭 Role Management", "prompt": "assign-role Aleem 1 Reviewer", "description": "Assign Aleem as Reviewer in Dispute workbench"},
-            {"category": "🎭 Role Management", "prompt": "assign-role test_agent 4 Team Lead", "description": "Assign test_agent as Team Lead in Loan workbench"},
-            
-            # Quick Setup Examples
-            {"category": "⚡ Quick Setup", "prompt": "create-agent ProjectManager", "description": "Create a project manager agent"},
-            {"category": "⚡ Quick Setup", "prompt": "create-workbench Marketing \"Marketing campaign management\"", "description": "Create Marketing workbench"},
-            {"category": "⚡ Quick Setup", "prompt": "assign-role ProjectManager 1 Team Lead", "description": "Make ProjectManager a team lead"},
-            {"category": "⚡ Quick Setup", "prompt": "create-task 7001 ProjectManager 1", "description": "Create task for ProjectManager in Dispute"},
-            
-            # Question Style Commands
-            {"category": "❓ Question Style", "prompt": "how many workbenches are there ?", "description": "Count total workbenches (question style)"},
-            {"category": "❓ Question Style", "prompt": "what agents exist ?", "description": "List all agents (question style)"},
-            {"category": "❓ Question Style", "prompt": "who are the agents ?", "description": "Show all agents (question style)"},
-            {"category": "❓ Question Style", "prompt": "tell me about Chitra", "description": "Get details about Chitra (conversational)"},
-            {"category": "❓ Question Style", "prompt": "what workbenches exist ?", "description": "List all workbenches (question style)"},
-            
-            # Contextual Follow-up Commands
-            {"category": "🔗 Contextual Commands", "prompt": "their assigned workbenches", "description": "Show workbench assignments (after listing agents)"},
-            {"category": "🔗 Contextual Commands", "prompt": "where are they assigned", "description": "Show assignments (contextual follow-up)"},
-            {"category": "🔗 Contextual Commands", "prompt": "their roles", "description": "Show all agent roles (contextual)"},
-            {"category": "🔗 Contextual Commands", "prompt": "workbench assignments", "description": "Show all agent-workbench assignments"},
-            {"category": "🔗 Contextual Commands", "prompt": "assigned to", "description": "Show assignments (short contextual)"},
-            
-            # Proper Naming Examples
-            {"category": "📝 Proper Naming", "prompt": "create workbench CustomerService \"Handle customer inquiries\"", "description": "Example of proper workbench naming"},
-            {"category": "📝 Proper Naming", "prompt": "create agent TechnicalSupport", "description": "Example of proper agent naming"},
-            {"category": "📝 Proper Naming", "prompt": "create workbench Finance \"Financial operations and reporting\"", "description": "Another workbench naming example"},
-            {"category": "📝 Proper Naming", "prompt": "create agent SalesManager", "description": "Another agent naming example"},
-            
-            # Analytics & Reports
-            {"category": "📊 Analytics & Reports", "prompt": "coverage", "description": "Show role coverage across all workbenches"},
-            
-            # Task Management (if MCP available)
-            {"category": "📋 Task Management", "prompt": "tasks abhijit", "description": "Get recent tasks for abhijit"},
-            {"category": "📋 Task Management", "prompt": "tasks Chitra", "description": "Get recent tasks for Chitra"},
-            {"category": "📋 Task Management", "prompt": "assign abhijit 5001 1", "description": "Assign task 5001 to abhijit in Dispute workbench"},
-            {"category": "📋 Task Management", "prompt": "status 5001 abhijit completed", "description": "Mark task 5001 as completed for abhijit"},
-            {"category": "📋 Task Management", "prompt": "stats abhijit", "description": "Get performance statistics for abhijit"},
-            {"category": "📋 Task Management", "prompt": "stats Chitra", "description": "Get performance statistics for Chitra"},
-            
-            # Advanced Operations
-            {"category": "⚡ Advanced Operations", "prompt": "assign-role workflow_agent 1 Assessor", "description": "Assign workflow_agent multiple roles"},
-            {"category": "⚡ Advanced Operations", "prompt": "assign-role bulk_agent 3 Team Lead", "description": "Assign bulk_agent as team lead"},
-            {"category": "⚡ Advanced Operations", "prompt": "assign-role test_agent 2 Reviewer", "description": "Cross-workbench role assignment"},
-            
-            # Specific Workbench Examples
-            {"category": "🔍 Dispute Workbench", "prompt": "roles 1", "description": "Check current Dispute team"},
-            {"category": "🔍 Dispute Workbench", "prompt": "assign-role ramesh 1 Viewer", "description": "Add ramesh as Dispute viewer"},
-            
-            {"category": "💳 Transaction Workbench", "prompt": "roles 2", "description": "Check Transaction team setup"},
-            {"category": "💳 Transaction Workbench", "prompt": "assign-role ashish 2 Assessor", "description": "Add ashish to Transaction team"},
-            
-            {"category": "👤 Account Holder Workbench", "prompt": "roles 3", "description": "View Account Holder team"},
-            {"category": "👤 Account Holder Workbench", "prompt": "assign-role Aleem 3 Reviewer", "description": "Add Aleem as Account reviewer"},
-            
-            {"category": "🏦 Loan Workbench", "prompt": "roles 4", "description": "Check Loan processing team"},
-            {"category": "🏦 Loan Workbench", "prompt": "assign-role Chitra 4 Team Lead", "description": "Make Chitra loan team lead"},
-            
-            # System Insights
-            {"category": "🔍 System Insights", "prompt": "coverage", "description": "Identify workbenches needing attention"},
-            {"category": "🔍 System Insights", "prompt": "agent-roles bulk_agent", "description": "See bulk_agent's current responsibilities"},
-            {"category": "🔍 System Insights", "prompt": "agent-roles workflow_agent", "description": "Check workflow_agent assignments"},
-            
-            # Bulk Operations
-            {"category": "🔄 Bulk Operations", "prompt": "create-agent TeamLead1", "description": "Create first team lead"},
-            {"category": "🔄 Bulk Operations", "prompt": "create-agent TeamLead2", "description": "Create second team lead"},
-            {"category": "🔄 Bulk Operations", "prompt": "assign-role TeamLead1 1 Team Lead", "description": "Assign team lead role"},
-            {"category": "🔄 Bulk Operations", "prompt": "assign-role TeamLead2 2 Team Lead", "description": "Assign to different workbench"},
+            # Role Management - placeholder for future assign-role & revoke-role prompts
+            {"category": "🎭 Role Management", "prompt": "assign-role ashish 1 Assessor", "description": "Assign role to agent in workbench"},
+            {"category": "🎭 Role Management", "prompt": "coverage", "description": "Show role coverage report"},
         ]
         
         # Filter out MCP-only commands if not available
