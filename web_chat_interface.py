@@ -1116,6 +1116,13 @@ async def get_chat_page(request: Request):
     """Serve the main chat interface"""
     return templates.TemplateResponse("chat.html", {"request": request})
 
+@app.get("/test", response_class=HTMLResponse)
+async def get_test_page():
+    """Serve a simple test page"""
+    with open("simple_test.html", "r") as f:
+        content = f.read()
+    return HTMLResponse(content=content)
+
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
     await manager.connect(websocket)
