@@ -111,6 +111,72 @@ class ConnectionManager:
         }
         return demo_data.get(action, {"error": "Demo data not available"})
 
+    def get_suggested_prompts(self) -> List[Dict[str, str]]:
+        """Get comprehensive suggested prompts for all features"""
+        prompts = [
+            # Getting Started
+            {"category": "🚀 Getting Started", "prompt": "help", "description": "Show all available commands"},
+            {"category": "🚀 Getting Started", "prompt": "agents", "description": "List all agents in the system"},
+            {"category": "🚀 Getting Started", "prompt": "workbenches", "description": "Show all workbenches with descriptions"},
+            
+            # Agent Management
+            {"category": "👥 Agent Management", "prompt": "agent-roles abhijit", "description": "Show all roles for abhijit"},
+            {"category": "👥 Agent Management", "prompt": "agent-roles Chitra", "description": "Show all roles for Chitra"},
+            {"category": "👥 Agent Management", "prompt": "agent-roles ashish", "description": "Show all roles for ashish"},
+            
+            # Workbench Operations
+            {"category": "🏢 Workbench Operations", "prompt": "roles 1", "description": "View roles in Dispute workbench"},
+            {"category": "🏢 Workbench Operations", "prompt": "roles 2", "description": "View roles in Transaction workbench"},
+            {"category": "🏢 Workbench Operations", "prompt": "roles 3", "description": "View roles in Account Holder workbench"},
+            {"category": "🏢 Workbench Operations", "prompt": "roles 4", "description": "View roles in Loan workbench"},
+            
+            # Role Management
+            {"category": "🎭 Role Management", "prompt": "assign-role bulk_agent 2 Viewer", "description": "Assign bulk_agent as Viewer in Transaction workbench"},
+            {"category": "🎭 Role Management", "prompt": "assign-role ramesh 3 Assessor", "description": "Assign ramesh as Assessor in Account Holder workbench"},
+            {"category": "🎭 Role Management", "prompt": "assign-role Aleem 1 Reviewer", "description": "Assign Aleem as Reviewer in Dispute workbench"},
+            {"category": "🎭 Role Management", "prompt": "assign-role test_agent 4 Team Lead", "description": "Assign test_agent as Team Lead in Loan workbench"},
+            
+            # Analytics & Reports
+            {"category": "📊 Analytics & Reports", "prompt": "coverage", "description": "Show role coverage across all workbenches"},
+            
+            # Task Management (if MCP available)
+            {"category": "📋 Task Management", "prompt": "tasks abhijit", "description": "Get recent tasks for abhijit"},
+            {"category": "📋 Task Management", "prompt": "tasks Chitra", "description": "Get recent tasks for Chitra"},
+            {"category": "📋 Task Management", "prompt": "assign abhijit 5001 1", "description": "Assign task 5001 to abhijit in Dispute workbench"},
+            {"category": "📋 Task Management", "prompt": "status 5001 abhijit completed", "description": "Mark task 5001 as completed for abhijit"},
+            {"category": "📋 Task Management", "prompt": "stats abhijit", "description": "Get performance statistics for abhijit"},
+            {"category": "📋 Task Management", "prompt": "stats Chitra", "description": "Get performance statistics for Chitra"},
+            
+            # Advanced Operations
+            {"category": "⚡ Advanced Operations", "prompt": "assign-role workflow_agent 1 Assessor", "description": "Assign workflow_agent multiple roles"},
+            {"category": "⚡ Advanced Operations", "prompt": "assign-role bulk_agent 3 Team Lead", "description": "Assign bulk_agent as team lead"},
+            {"category": "⚡ Advanced Operations", "prompt": "assign-role test_agent 2 Reviewer", "description": "Cross-workbench role assignment"},
+            
+            # Specific Workbench Examples
+            {"category": "🔍 Dispute Workbench", "prompt": "roles 1", "description": "Check current Dispute team"},
+            {"category": "🔍 Dispute Workbench", "prompt": "assign-role ramesh 1 Viewer", "description": "Add ramesh as Dispute viewer"},
+            
+            {"category": "💳 Transaction Workbench", "prompt": "roles 2", "description": "Check Transaction team setup"},
+            {"category": "💳 Transaction Workbench", "prompt": "assign-role ashish 2 Assessor", "description": "Add ashish to Transaction team"},
+            
+            {"category": "👤 Account Holder Workbench", "prompt": "roles 3", "description": "View Account Holder team"},
+            {"category": "👤 Account Holder Workbench", "prompt": "assign-role Aleem 3 Reviewer", "description": "Add Aleem as Account reviewer"},
+            
+            {"category": "🏦 Loan Workbench", "prompt": "roles 4", "description": "Check Loan processing team"},
+            {"category": "🏦 Loan Workbench", "prompt": "assign-role Chitra 4 Team Lead", "description": "Make Chitra loan team lead"},
+            
+            # System Insights
+            {"category": "🔍 System Insights", "prompt": "coverage", "description": "Identify workbenches needing attention"},
+            {"category": "🔍 System Insights", "prompt": "agent-roles bulk_agent", "description": "See bulk_agent's current responsibilities"},
+            {"category": "🔍 System Insights", "prompt": "agent-roles workflow_agent", "description": "Check workflow_agent assignments"},
+        ]
+        
+        # Filter out MCP-only commands if not available
+        if not MCP_AVAILABLE:
+            prompts = [p for p in prompts if p["category"] != "📋 Task Management"]
+        
+        return prompts
+
     async def process_command(self, command: str, user: str = "Anonymous") -> Dict[str, Any]:
         """Process MCP commands and return results"""
         try:
@@ -139,6 +205,10 @@ class ConnectionManager:
                         "stats <agent> - Get agent statistics"
                     ]
                 }
+            
+            elif action == "prompts" or action == "suggestions":
+                prompts = self.get_suggested_prompts()
+                return {"type": "suggested_prompts", "data": prompts}
             
             elif action == "agents":
                 if self.mcp_client:
@@ -254,7 +324,7 @@ class ConnectionManager:
                     return {"error": "MCP client not available", "demo": True}
             
             else:
-                return {"error": f"Unknown command: {action}. Type 'help' for available commands."}
+                return {"error": f"Unknown command: {action}. Type 'help' for available commands or 'prompts' for suggestions."}
         
         except Exception as e:
             return {"error": f"Error processing command: {str(e)}"}
@@ -282,6 +352,14 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             }
         }
         await manager.send_personal_message(json.dumps(welcome_msg), websocket)
+        
+        # Send suggested prompts
+        prompts_msg = {
+            "type": "suggested_prompts",
+            "data": manager.get_suggested_prompts(),
+            "timestamp": datetime.now().isoformat()
+        }
+        await manager.send_personal_message(json.dumps(prompts_msg), websocket)
         
         while True:
             # Receive message from client
@@ -330,7 +408,12 @@ async def get_agents():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Create the HTML template (same as before but with better mobile support)
+@app.get("/api/prompts")
+async def get_suggested_prompts():
+    """REST endpoint to get suggested prompts"""
+    return {"prompts": manager.get_suggested_prompts()}
+
+# Create the HTML template with enhanced UI for suggested prompts
 chat_html_template = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -361,12 +444,91 @@ chat_html_template = '''
             border-radius: 15px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.1);
             width: 100%;
-            max-width: 900px;
+            max-width: 1200px;
             height: 90vh;
             min-height: 600px;
             display: flex;
+            overflow: hidden;
+        }
+        
+        .sidebar {
+            width: 300px;
+            background: #f8fafc;
+            border-right: 1px solid #e2e8f0;
+            display: flex;
             flex-direction: column;
             overflow: hidden;
+        }
+        
+        .sidebar-header {
+            background: #4a5568;
+            color: white;
+            padding: 15px;
+            text-align: center;
+        }
+        
+        .sidebar-header h3 {
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+        
+        .sidebar-header p {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        
+        .prompts-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+        
+        .prompt-category {
+            margin-bottom: 20px;
+        }
+        
+        .category-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #4a5568;
+            margin-bottom: 8px;
+            padding: 5px 0;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        
+        .prompt-item {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 10px;
+            margin: 5px 0;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+        }
+        
+        .prompt-item:hover {
+            background: #edf2f7;
+            border-color: #4299e1;
+            transform: translateY(-1px);
+        }
+        
+        .prompt-command {
+            font-family: monospace;
+            font-weight: bold;
+            color: #2d3748;
+            margin-bottom: 3px;
+        }
+        
+        .prompt-description {
+            color: #718096;
+            font-size: 11px;
+        }
+        
+        .main-chat {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
         }
         
         .chat-header {
@@ -374,7 +536,6 @@ chat_html_template = '''
             color: white;
             padding: 20px;
             text-align: center;
-            border-radius: 15px 15px 0 0;
         }
         
         .chat-header h1 {
@@ -550,6 +711,20 @@ chat_html_template = '''
             margin-left: 10px;
         }
         
+        .toggle-sidebar {
+            display: none;
+            background: #4a5568;
+            color: white;
+            border: none;
+            padding: 10px;
+            cursor: pointer;
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            border-radius: 5px;
+            z-index: 1001;
+        }
+        
         @media (max-width: 768px) {
             body {
                 padding: 5px;
@@ -558,11 +733,31 @@ chat_html_template = '''
             .chat-container {
                 height: 95vh;
                 border-radius: 10px;
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: 250px;
+                border-right: none;
+                border-bottom: 1px solid #e2e8f0;
+                display: none;
+            }
+            
+            .sidebar.mobile-open {
+                display: flex;
+            }
+            
+            .main-chat {
+                flex: 1;
+            }
+            
+            .toggle-sidebar {
+                display: block;
             }
             
             .chat-header {
                 padding: 15px;
-                border-radius: 10px 10px 0 0;
             }
             
             .chat-header h1 {
@@ -587,19 +782,33 @@ chat_html_template = '''
     </style>
 </head>
 <body>
+    <button class="toggle-sidebar" onclick="toggleSidebar()">💡 Prompts</button>
+    
     <div class="chat-container">
-        <div class="chat-header">
-            <h1>🤖 MCP Chat Interface</h1>
-            <p>Interactive command interface for MCP system | Type 'help' to get started</p>
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h3>💡 Suggested Prompts</h3>
+                <p>Click any prompt to try it</p>
+            </div>
+            <div class="prompts-container" id="promptsContainer">
+                <!-- Prompts will be loaded here -->
+            </div>
         </div>
         
-        <div class="chat-messages" id="messages">
-            <!-- Messages will appear here -->
-        </div>
-        
-        <div class="chat-input">
-            <input type="text" id="messageInput" placeholder="Type a command (e.g., 'help', 'agents', 'workbenches', 'roles 1')..." maxlength="500">
-            <button onclick="sendMessage()">Send</button>
+        <div class="main-chat">
+            <div class="chat-header">
+                <h1>🤖 MCP Chat Interface</h1>
+                <p>Interactive command interface for MCP system | Click prompts or type commands</p>
+            </div>
+            
+            <div class="chat-messages" id="messages">
+                <!-- Messages will appear here -->
+            </div>
+            
+            <div class="chat-input">
+                <input type="text" id="messageInput" placeholder="Type a command or click a suggested prompt..." maxlength="500">
+                <button onclick="sendMessage()">Send</button>
+            </div>
         </div>
     </div>
     
@@ -613,6 +822,12 @@ chat_html_template = '''
         let mcpAvailable = false;
         let workbenchManagerAvailable = false;
         let isCloudDeployment = false;
+        let suggestedPrompts = [];
+        
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('mobile-open');
+        }
         
         function connect() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -625,7 +840,12 @@ chat_html_template = '''
             
             socket.onmessage = function(event) {
                 const data = JSON.parse(event.data);
-                displayMessage(data);
+                if (data.type === 'suggested_prompts') {
+                    suggestedPrompts = data.data;
+                    displaySuggestedPrompts(data.data);
+                } else {
+                    displayMessage(data);
+                }
             };
             
             socket.onclose = function(event) {
@@ -647,6 +867,58 @@ chat_html_template = '''
             } else {
                 statusEl.textContent = '🔴 Disconnected';
                 statusEl.className = 'connection-status disconnected';
+            }
+        }
+        
+        function displaySuggestedPrompts(prompts) {
+            const container = document.getElementById('promptsContainer');
+            container.innerHTML = '';
+            
+            // Group prompts by category
+            const categories = {};
+            prompts.forEach(prompt => {
+                if (!categories[prompt.category]) {
+                    categories[prompt.category] = [];
+                }
+                categories[prompt.category].push(prompt);
+            });
+            
+            // Display each category
+            Object.entries(categories).forEach(([category, categoryPrompts]) => {
+                const categoryDiv = document.createElement('div');
+                categoryDiv.className = 'prompt-category';
+                
+                const titleDiv = document.createElement('div');
+                titleDiv.className = 'category-title';
+                titleDiv.textContent = category;
+                categoryDiv.appendChild(titleDiv);
+                
+                categoryPrompts.forEach(prompt => {
+                    const promptDiv = document.createElement('div');
+                    promptDiv.className = 'prompt-item';
+                    promptDiv.onclick = () => selectPrompt(prompt.prompt);
+                    
+                    promptDiv.innerHTML = `
+                        <div class="prompt-command">${prompt.prompt}</div>
+                        <div class="prompt-description">${prompt.description}</div>
+                    `;
+                    
+                    categoryDiv.appendChild(promptDiv);
+                });
+                
+                container.appendChild(categoryDiv);
+            });
+        }
+        
+        function selectPrompt(prompt) {
+            const input = document.getElementById('messageInput');
+            input.value = prompt;
+            input.focus();
+            
+            // Auto-send on mobile
+            if (window.innerWidth <= 768) {
+                sendMessage();
+                toggleSidebar(); // Close sidebar on mobile
             }
         }
         
@@ -732,6 +1004,31 @@ chat_html_template = '''
                     html += `<li>${cmd}</li>`;
                 });
                 html += '</ul>';
+                html += '<p style="margin-top: 10px;"><em>💡 Tip: Check the sidebar for suggested prompts or type "prompts" to see all suggestions!</em></p>';
+                return html;
+            }
+            
+            if (result.type === 'suggested_prompts') {
+                let html = '<strong>💡 All Available Prompts:</strong><div class="workbench-list">';
+                const categories = {};
+                result.data.forEach(prompt => {
+                    if (!categories[prompt.category]) {
+                        categories[prompt.category] = [];
+                    }
+                    categories[prompt.category].push(prompt);
+                });
+                
+                Object.entries(categories).forEach(([category, prompts]) => {
+                    html += `<div class="workbench-item"><strong>${category}</strong>`;
+                    prompts.forEach(prompt => {
+                        html += `<div class="role-assignment" style="cursor: pointer;" onclick="selectPrompt('${prompt.prompt}')">
+                            <strong>${prompt.prompt}</strong><br>
+                            <small>${prompt.description}</small>
+                        </div>`;
+                    });
+                    html += '</div>';
+                });
+                html += '</div>';
                 return html;
             }
             
@@ -767,11 +1064,15 @@ chat_html_template = '''
             if (result.type === 'agent_roles') {
                 const roles = result.data;
                 let html = `<strong>🎭 Roles for ${result.agent}:</strong><div class="workbench-list">`;
-                roles.forEach(role => {
-                    html += `<div class="role-assignment">
-                        ${role.workbench_name}: <strong>${role.role}</strong>
-                    </div>`;
-                });
+                if (roles.length === 0) {
+                    html += '<div class="role-assignment">No roles assigned</div>';
+                } else {
+                    roles.forEach(role => {
+                        html += `<div class="role-assignment">
+                            ${role.workbench_name}: <strong>${role.role}</strong>
+                        </div>`;
+                    });
+                }
                 html += '</div>';
                 return html;
             }
@@ -780,8 +1081,9 @@ chat_html_template = '''
                 const report = result.data;
                 let html = '<strong>📊 Role Coverage Report:</strong><div class="workbench-list">';
                 report.workbenches.forEach(wb => {
+                    const statusColor = wb.gaps === 0 ? '#48bb78' : wb.gaps <= 2 ? '#ed8936' : '#f56565';
                     html += `<div class="workbench-item">
-                        <strong>${wb.workbench_name}:</strong> ${wb.coverage_percentage.toFixed(0)}% coverage (${wb.gaps} gaps)
+                        <strong style="color: ${statusColor};">${wb.workbench_name}:</strong> ${wb.coverage_percentage.toFixed(0)}% coverage (${wb.gaps} gaps)
                     </div>`;
                 });
                 html += '</div>';
