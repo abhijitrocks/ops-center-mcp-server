@@ -3026,11 +3026,22 @@ Here's what you can do:
 </html>
 '''
 
-if __name__ == "__main__":
-    # Create the HTML template file
-    with open("templates/chat.html", "w") as f:
-        f.write(chat_html_template)
-    
+# Initialize template directory and file (for cloud deployment compatibility)
+def init_templates():
+    """Initialize templates directory and file"""
+    try:
+        import os
+        os.makedirs("templates", exist_ok=True)
+        with open("templates/chat.html", "w") as f:
+            f.write(chat_html_template)
+    except Exception as e:
+        print(f"⚠️ Template initialization warning: {e}")
+
+# Initialize templates when module loads
+init_templates()
+
+# Startup logging function
+def print_startup_info():
     isCloudDeployment = PORT != 8080 or HOST != '0.0.0.0'
     
     print("🚀 Starting OPS Center Chat Interface...")
@@ -3048,5 +3059,9 @@ if __name__ == "__main__":
     print(f"🔧 Workbench Manager: {'✅ Available' if WORKBENCH_MANAGER_AVAILABLE else '🔶 Limited'}")
     print(f"🔧 LLM Integration: {'✅ Active' if LLM_INTEGRATION_AVAILABLE else '🔶 Rule-based with Natural Language'}")
     print(f"🌐 Environment: {'☁️ Cloud Deployed' if isCloudDeployment else '🏠 Local Development'}")
-    
+
+# Always print startup info for deployment logging
+print_startup_info()
+
+if __name__ == "__main__":
     uvicorn.run(app, host=HOST, port=PORT)
