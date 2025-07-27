@@ -12,7 +12,8 @@ from routers import (
     task_queue_mapping,
     user_task_info,
     history_task_info,
-    performance
+    performance,
+    agents
 )
 
 app = FastAPI(title="OPS Center MCP Server")
@@ -37,3 +38,4 @@ app.include_router(task_queue_mapping.router)
 app.include_router(user_task_info.router)
 app.include_router(history_task_info.router)
 app.include_router(performance.router)
+app.include_router(agents.router)

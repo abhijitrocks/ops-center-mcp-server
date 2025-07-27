@@ -34,6 +34,10 @@ async def handle_rpc(request: Request):
         params = rpc_request.params or {}
         if method == "get_agent_task_count":
             result = get_agent_task_count(**params)
+        elif method == "create_agent":
+            result = create_agent(**params)
+        elif method == "list_all_agents":
+            result = list_all_agents(**params)
         elif method == "list_recent_tasks":
             result = list_recent_tasks(**params)
         elif method == "average_completion_time":
@@ -112,6 +116,58 @@ def assign_task(agent: str, task_id: int, workbench_id: Optional[int] = None) ->
         session.commit()
         session.refresh(new_task)
         return new_task.dict()
+
+
+def create_agent(agent_name: str, task_id: int = None, workbench_id: Optional[int] = None) -> dict:
+    """Create a new agent by assigning a task to them"""
+    if task_id is None:
+        # Generate a unique task_id if not provided
+        import random
+        task_id = random.randint(10000, 99999)
+    
+    new_task = UserTaskInfo(
+        agent=agent_name,
+        task_id=task_id,
+        status="assigned",
+        created_at=datetime.utcnow(),
+        workbench_id=workbench_id
+    )
+    
+    with Session(engine) as session:
+        session.add(new_task)
+        session.commit()
+        session.refresh(new_task)
+        return {
+            "message": f"Agent '{agent_name}' created successfully",
+            "agent": agent_name,
+            "task_id": task_id,
+            "status": "assigned"
+        }
+
+
+def list_all_agents() -> List[dict]:
+    """List all agents in the system with their basic stats"""
+    with Session(engine) as session:
+        stmt = select(distinct(UserTaskInfo.agent)).where(UserTaskInfo.agent.is_not(None))
+        agents = session.exec(stmt).all()
+        
+        agent_stats = []
+        for agent in agents:
+            # Get task counts for each agent
+            agent_tasks_stmt = select(UserTaskInfo).where(UserTaskInfo.agent == agent)
+            tasks = session.exec(agent_tasks_stmt).all()
+            
+            completed_count = len([t for t in tasks if t.status == "completed"])
+            total_count = len(tasks)
+            
+            agent_stats.append({
+                "agent_name": agent,
+                "total_tasks": total_count,
+                "completed_tasks": completed_count,
+                "completion_rate": round(completed_count / total_count * 100, 2) if total_count > 0 else 0
+            })
+        
+        return agent_stats
 
 
 def update_task_status(task_id: int, agent: Optional[str] = None, status: str = "completed") -> dict:

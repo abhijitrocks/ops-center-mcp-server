@@ -1,6 +1,6 @@
 # OPS Center MCP Server
 
-A FastAPI-based CRUD server to manage tenants, tags, task mappings, and agent performance.
+A FastAPI-based CRUD server to manage tenants, tags, task mappings, and agent performance with comprehensive agent management functionality.
 
 ## Quick Start
 
@@ -17,9 +17,48 @@ Supported methods:
 - `get_agent_task_count(agent: str, days: int)`
 - `list_recent_tasks(agent: str, limit: int)`
 - `average_completion_time(agent: str)`
+- `create_agent(agent_name: str, task_id: int, workbench_id: int)` - Create a new agent
+- `list_all_agents()` - List all agents with statistics
 - `list_tags(tenant_id: int)`
 - `assign_task(agent: str, task_id: int, workbench_id: int)`
 - `update_task_status(task_id: int, agent: str, status: str)`
+
+## Agent Management
+
+The system now includes comprehensive agent management functionality. Agents are created implicitly when tasks are assigned to them.
+
+### REST API Endpoints
+
+**List all agents:**
+```
+GET /agents/
+```
+
+**Get agent count:**
+```
+GET /agents/count
+```
+
+**Get specific agent details:**
+```
+GET /agents/{agent_name}
+```
+
+**Assign task to agent:**
+```
+POST /agents/{agent_name}/assign-task
+Body: {"task_id": 123, "workbench_id": 1}
+```
+
+**Get agent tasks:**
+```
+GET /agents/{agent_name}/tasks
+```
+
+### Current Agents
+
+The system currently has **1 agent**:
+- **abhijit** - Recently created agent with 1 assigned task
 
 Example payload:
 ```json
