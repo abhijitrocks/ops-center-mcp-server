@@ -50,6 +50,8 @@ async def handle_rpc(request: Request):
             result = get_agent_info(**params)
         elif method == "get_agent_stats":
             result = get_agent_stats(**params)
+        elif method == "create_agent":
+            result = create_agent(**params)
         else:
             response.error = {"code": -32601, "message": "Method not found"}
             return response
@@ -246,4 +248,42 @@ def get_agent_stats(days: int = 7) -> dict:
                 "total_completed_all_agents": total_completed_all,
                 "overall_completion_rate": (total_completed_all / total_tasks_all * 100) if total_tasks_all > 0 else 0
             }
+        }
+
+
+def create_agent(agent: str) -> dict:
+    """Create a new agent without assigning any tasks"""
+    with Session(engine) as session:
+        # Check if agent already exists by looking for any tasks
+        stmt = select(UserTaskInfo).where(UserTaskInfo.agent == agent).limit(1)
+        existing_task = session.exec(stmt).first()
+        
+        if existing_task:
+            return {
+                "agent": agent,
+                "status": "already_exists",
+                "message": f"Agent '{agent}' already exists with existing tasks",
+                "existing_tasks": True
+            }
+        
+        # Create a placeholder task that will be immediately marked as a "registration" task
+        placeholder_task = UserTaskInfo(
+            agent=agent,
+            task_id=-1,  # Use -1 to indicate this is a registration placeholder
+            status="agent_created",
+            created_at=datetime.utcnow(),
+            completed_at=datetime.utcnow(),  # Mark as completed immediately
+            workbench_id=None
+        )
+        
+        session.add(placeholder_task)
+        session.commit()
+        session.refresh(placeholder_task)
+        
+        return {
+            "agent": agent,
+            "status": "created",
+            "message": f"Agent '{agent}' created successfully without tasks",
+            "created_at": placeholder_task.created_at.isoformat(),
+            "registration_id": placeholder_task.id
         }

@@ -117,6 +117,10 @@ class MCPClient:
         """Get statistics for all agents in the last N days"""
         return self._sync_rpc_call("get_agent_stats", {"days": days})
     
+    def create_agent(self, agent: str) -> Dict:
+        """Create a new agent without assigning any tasks"""
+        return self._sync_rpc_call("create_agent", {"agent": agent})
+    
     # Async methods
     async def async_get_agent_task_count(self, agent: str, days: int = 3) -> Dict:
         """Async version of get_agent_task_count"""
@@ -159,6 +163,10 @@ class MCPClient:
     async def async_get_agent_stats(self, days: int = 7) -> Dict:
         """Async version of get_agent_stats"""
         return await self._async_rpc_call("get_agent_stats", {"days": days})
+    
+    async def async_create_agent(self, agent: str) -> Dict:
+        """Async version of create_agent"""
+        return await self._async_rpc_call("create_agent", {"agent": agent})
 
     # Health check and utility methods
     def health_check(self) -> Dict:
@@ -209,7 +217,7 @@ def main():
     parser.add_argument("--agent", required=True, help="Agent name")
     parser.add_argument("--action", choices=[
         "health", "task_count", "recent_tasks", "avg_time", "assign", "update_status",
-        "list_agents", "agent_info", "agent_stats"
+        "list_agents", "agent_info", "agent_stats", "create_agent"
     ], required=True, help="Action to perform")
     parser.add_argument("--task-id", type=int, help="Task ID (for assign/update)")
     parser.add_argument("--status", default="completed", help="Status (for update)")
@@ -264,6 +272,10 @@ def main():
         elif args.action == "agent_stats":
             result = client.get_agent_stats(days=args.days)
             print("Agent Statistics:", json.dumps(result, indent=2))
+            
+        elif args.action == "create_agent":
+            result = client.create_agent(args.agent)
+            print("Agent Creation:", json.dumps(result, indent=2))
             
     except Exception as e:
         print(f"Error: {e}")
