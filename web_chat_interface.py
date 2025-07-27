@@ -1163,7 +1163,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         # Send welcome message
         welcome_msg = {
             "type": "system",
-            "message": f"Welcome {user_id}! Connected to MCP Chat Interface.",
+                            "message": "Welcome, OPS Ninja! You're now connected to the OPS Center MCP Chat Interface. How can I assist you today?",
             "timestamp": datetime.now().isoformat(),
             "status": {
                 "mcp_available": MCP_AVAILABLE,
