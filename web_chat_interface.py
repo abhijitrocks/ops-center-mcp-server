@@ -1195,6 +1195,23 @@ async def get_suggested_prompts():
     """REST endpoint to get suggested prompts"""
     return {"prompts": manager.get_suggested_prompts()}
 
+@app.post("/api/command")
+async def process_command_api(request: dict):
+    """REST endpoint to process commands when WebSocket is not available"""
+    try:
+        message = request.get("message", "")
+        user = request.get("user", "Anonymous")
+        
+        if not message:
+            return {"error": "No message provided"}
+        
+        # Process the command using the same logic as WebSocket
+        result = await manager.process_command(message, user)
+        return result
+        
+    except Exception as e:
+        return {"error": f"Command processing failed: {str(e)}", "fallback": True}
+
 # Create the HTML template with modern enterprise UI/UX
 chat_html_template = '''
 <!DOCTYPE html>
@@ -2191,9 +2208,19 @@ Built with modern web technologies for optimal performance.`,
         function connect() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws/${userId}`;
+            
+            console.log('Attempting WebSocket connection to:', wsUrl);
             socket = new WebSocket(wsUrl);
             
+            // Set a timeout to detect connection issues
+            const connectionTimeout = setTimeout(() => {
+                console.log('WebSocket connection timeout - enabling fallback mode');
+                enableFallbackMode();
+            }, 5000);
+            
             socket.onopen = function(event) {
+                clearTimeout(connectionTimeout);
+                console.log('WebSocket connected successfully');
                 updateConnectionStatus(true);
                 
                 // Load suggested prompts
@@ -2241,14 +2268,89 @@ Here's what you can do:
             };
             
             socket.onclose = function(event) {
+                console.log('WebSocket connection closed:', event.code, event.reason);
                 updateConnectionStatus(false);
-                setTimeout(connect, 3000); // Reconnect after 3 seconds
+                
+                // If it's not a normal closure, enable fallback mode after a few failed attempts
+                if (event.code !== 1000) {
+                    setTimeout(() => {
+                        console.log('Enabling fallback mode due to connection issues');
+                        enableFallbackMode();
+                    }, 2000);
+                } else {
+                    setTimeout(connect, 3000); // Reconnect after 3 seconds for normal closure
+                }
             };
             
             socket.onerror = function(error) {
                 console.error('WebSocket error:', error);
                 updateConnectionStatus(false);
+                // Enable fallback mode immediately on WebSocket error
+                setTimeout(() => {
+                    console.log('Enabling fallback mode due to WebSocket error');
+                    enableFallbackMode();
+                }, 1000);
             };
+        }
+        
+        // Fallback mode - enable interface without WebSocket
+        function enableFallbackMode() {
+            console.log('🔄 Enabling fallback mode - interface will work without WebSocket');
+            
+            // Update connection status to show we're in fallback mode
+            const statusEl = document.getElementById('connectionStatus');
+            statusEl.textContent = '🔶 Fallback Mode';
+            statusEl.className = 'connection-status disconnected';
+            
+            // Load suggested prompts directly
+            fetch('/api/prompts')
+                .then(response => response.json())
+                .then(data => {
+                    suggestedPrompts = data.prompts;
+                    displaySuggestedPrompts(data.prompts);
+                })
+                .catch(error => {
+                    console.log('Could not load prompts, using default');
+                    displayDefaultPrompts();
+                });
+            
+            // Show welcome message
+            displayMessage({
+                type: 'response',
+                command: 'Welcome',
+                result: {
+                    type: 'welcome',
+                    message: `Welcome to OPS Center Chat! 🎉
+
+I'm your Operations Assistant—ready to help you manage agents, workbenches, and workflows with simple commands.
+
+🔶 Running in fallback mode - some features may be limited but core functionality is available.
+
+Here's what you can do:
+• Ask "help" to see all commands
+• Type "agents" to list agents
+• Create workflows with create workflow for "<name>"
+• Assign tasks, view stats, and more—all in plain English
+
+💡 Tip: Try "how many tasks has Agent A completed in the last 3 days?" to get started.`,
+                    suggestions: ["help", "agents", "workbenches", "coverage", "create workflow for \"Customer Support\""]
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+            // Enable fallback communication
+            window.fallbackMode = true;
+        }
+        
+        // Default prompts in case API fails
+        function displayDefaultPrompts() {
+            const defaultPrompts = [
+                {"category": "🚀 Getting Started", "prompt": "help", "description": "View all available commands"},
+                {"category": "🚀 Getting Started", "prompt": "agents", "description": "List all agents"},
+                {"category": "✨ Create New Items", "prompt": "create agent NewAgent", "description": "Add a new agent"},
+                {"category": "👥 Agent Management", "prompt": "details about abhijit", "description": "Full details of an agent"}
+            ];
+            displaySuggestedPrompts(defaultPrompts);
         }
         
         function updateConnectionStatus(connected) {
@@ -2372,10 +2474,19 @@ Here's what you can do:
             const sendButton = document.getElementById('sendButton');
             const message = input.value.trim();
             
-            if (message === '' || !socket || socket.readyState !== WebSocket.OPEN) {
+            if (message === '') {
                 return;
             }
             
+            // Check if we can use WebSocket or need fallback
+            if (!window.fallbackMode && socket && socket.readyState === WebSocket.OPEN) {
+                sendViaWebSocket(message, input, sendButton);
+            } else {
+                sendViaHTTP(message, input, sendButton);
+            }
+        }
+        
+        function sendViaWebSocket(message, input, sendButton) {
             // Add to message history
             messageHistory.unshift(message);
             if (messageHistory.length > 50) {
@@ -2408,6 +2519,68 @@ Here's what you can do:
                 sendButton.disabled = false;
                 sendButton.innerHTML = '<span class="send-icon">📤</span><span>Send</span>';
             }, 1000);
+        }
+        
+        function sendViaHTTP(message, input, sendButton) {
+            // Add to message history
+            messageHistory.unshift(message);
+            if (messageHistory.length > 50) {
+                messageHistory = messageHistory.slice(0, 50);
+            }
+            historyIndex = -1;
+            
+            // Disable send button temporarily
+            sendButton.disabled = true;
+            sendButton.innerHTML = '<span class="send-icon">⏳</span><span>Sending</span>';
+            
+            // Display user message
+            displayMessage({
+                type: 'user',
+                message: message,
+                timestamp: new Date().toISOString()
+            });
+            
+            // Send via HTTP API
+            fetch('/api/command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    message: message,
+                    user: userId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Display the response
+                displayMessage({
+                    type: 'response',
+                    command: message,
+                    result: data,
+                    timestamp: new Date().toISOString()
+                });
+            })
+            .catch(error => {
+                console.error('HTTP API error:', error);
+                displayMessage({
+                    type: 'response',
+                    command: message,
+                    result: {
+                        error: 'Unable to process command. Please try again or check your connection.',
+                        fallback: true
+                    },
+                    timestamp: new Date().toISOString()
+                });
+            })
+            .finally(() => {
+                // Re-enable send button
+                sendButton.disabled = false;
+                sendButton.innerHTML = '<span class="send-icon">📤</span><span>Send</span>';
+            });
+            
+            input.value = '';
+            input.style.height = 'auto';
         }
         
         function displayMessage(data) {
@@ -2815,6 +2988,14 @@ Here's what you can do:
         
         // Connect on page load
         connect();
+        
+        // Also try fallback mode after a short delay if connection issues
+        setTimeout(() => {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                console.log('WebSocket not ready after 3 seconds, enabling fallback mode');
+                enableFallbackMode();
+            }
+        }, 3000);
     </script>
 </body>
 </html>
