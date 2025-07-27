@@ -27,7 +27,7 @@ LLM_PROVIDERS = {
     "ollama": {
         "available": False,
         "module": "ollama",
-        "model": "llama2",
+        "model": "phi3:mini",
         "api_key_env": None  # Local model
     },
     "huggingface": {
