@@ -52,6 +52,10 @@ async def handle_rpc(request: Request):
             result = get_agent_stats(**params)
         elif method == "create_agent":
             result = create_agent(**params)
+        elif method == "assign_role":
+            result = assign_role(**params)
+        elif method == "get_agent_roles":
+            result = get_agent_roles(**params)
         else:
             response.error = {"code": -32601, "message": "Method not found"}
             return response
@@ -287,3 +291,103 @@ def create_agent(agent: str) -> dict:
             "created_at": placeholder_task.created_at.isoformat(),
             "registration_id": placeholder_task.id
         }
+
+
+def assign_role(agent: str, role: str, workbench_id: Optional[int] = None, workbench_name: Optional[str] = None) -> dict:
+    """Assign a role to an agent, optionally for a specific workbench"""
+    with Session(engine) as session:
+        # Check if agent exists by looking for any tasks
+        stmt = select(UserTaskInfo).where(UserTaskInfo.agent == agent).limit(1)
+        existing_task = session.exec(stmt).first()
+        
+        if not existing_task:
+            return {
+                "agent": agent,
+                "status": "error",
+                "message": f"Agent '{agent}' not found. Create agent first.",
+                "role_assigned": False
+            }
+        
+        # Create a special role assignment task
+        role_task = UserTaskInfo(
+            agent=agent,
+            task_id=-100 - (workbench_id or 0),  # Use negative numbers for role assignments
+            status=f"role_{role.lower().replace(' ', '_')}",
+            created_at=datetime.utcnow(),
+            completed_at=datetime.utcnow(),  # Mark as completed immediately
+            workbench_id=workbench_id
+        )
+        
+        session.add(role_task)
+        session.commit()
+        session.refresh(role_task)
+        
+        workbench_info = ""
+        if workbench_name and workbench_id:
+            workbench_info = f" for {workbench_name} (Workbench ID: {workbench_id})"
+        elif workbench_id:
+            workbench_info = f" for Workbench ID: {workbench_id}"
+        
+        return {
+            "agent": agent,
+            "role": role,
+            "workbench_id": workbench_id,
+            "workbench_name": workbench_name,
+            "status": "role_assigned",
+            "message": f"Agent '{agent}' assigned as {role}{workbench_info}",
+            "assigned_at": role_task.created_at.isoformat(),
+            "role_id": role_task.id
+        }
+
+
+def get_agent_roles(agent: Optional[str] = None) -> dict:
+    """Get roles for a specific agent or all agents"""
+    with Session(engine) as session:
+        if agent:
+            # Get roles for specific agent
+            stmt = select(UserTaskInfo).where(
+                UserTaskInfo.agent == agent,
+                UserTaskInfo.status.like("role_%")
+            ).order_by(UserTaskInfo.created_at.desc())
+            role_tasks = session.exec(stmt).all()
+            
+            roles = []
+            for task in role_tasks:
+                role_name = task.status.replace("role_", "").replace("_", " ").title()
+                roles.append({
+                    "role": role_name,
+                    "workbench_id": task.workbench_id,
+                    "assigned_at": task.created_at.isoformat(),
+                    "role_id": task.id
+                })
+            
+            return {
+                "agent": agent,
+                "roles": roles,
+                "total_roles": len(roles)
+            }
+        else:
+            # Get all agents with roles
+            stmt = select(UserTaskInfo).where(
+                UserTaskInfo.status.like("role_%")
+            ).order_by(UserTaskInfo.agent, UserTaskInfo.created_at.desc())
+            role_tasks = session.exec(stmt).all()
+            
+            agents_roles = {}
+            for task in role_tasks:
+                agent_name = task.agent
+                if agent_name not in agents_roles:
+                    agents_roles[agent_name] = []
+                
+                role_name = task.status.replace("role_", "").replace("_", " ").title()
+                agents_roles[agent_name].append({
+                    "role": role_name,
+                    "workbench_id": task.workbench_id,
+                    "assigned_at": task.created_at.isoformat(),
+                    "role_id": task.id
+                })
+            
+            return {
+                "all_agents_roles": agents_roles,
+                "total_agents_with_roles": len(agents_roles)
+            }

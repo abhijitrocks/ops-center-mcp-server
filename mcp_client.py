@@ -121,6 +121,22 @@ class MCPClient:
         """Create a new agent without assigning any tasks"""
         return self._sync_rpc_call("create_agent", {"agent": agent})
     
+    def assign_role(self, agent: str, role: str, workbench_id: Optional[int] = None, workbench_name: Optional[str] = None) -> Dict:
+        """Assign a role to an agent"""
+        params = {"agent": agent, "role": role}
+        if workbench_id is not None:
+            params["workbench_id"] = workbench_id
+        if workbench_name is not None:
+            params["workbench_name"] = workbench_name
+        return self._sync_rpc_call("assign_role", params)
+    
+    def get_agent_roles(self, agent: Optional[str] = None) -> Dict:
+        """Get roles for an agent or all agents"""
+        params = {}
+        if agent is not None:
+            params["agent"] = agent
+        return self._sync_rpc_call("get_agent_roles", params)
+    
     # Async methods
     async def async_get_agent_task_count(self, agent: str, days: int = 3) -> Dict:
         """Async version of get_agent_task_count"""
@@ -217,7 +233,7 @@ def main():
     parser.add_argument("--agent", required=True, help="Agent name")
     parser.add_argument("--action", choices=[
         "health", "task_count", "recent_tasks", "avg_time", "assign", "update_status",
-        "list_agents", "agent_info", "agent_stats", "create_agent"
+        "list_agents", "agent_info", "agent_stats", "create_agent", "assign_role", "get_roles"
     ], required=True, help="Action to perform")
     parser.add_argument("--task-id", type=int, help="Task ID (for assign/update)")
     parser.add_argument("--status", default="completed", help="Status (for update)")
@@ -225,6 +241,8 @@ def main():
     parser.add_argument("--limit", type=int, default=5, help="Limit for recent tasks")
     parser.add_argument("--tenant-id", type=int, help="Tenant ID (for tags)")
     parser.add_argument("--workbench-id", type=int, help="Workbench ID (for assign)")
+    parser.add_argument("--role", help="Role name (for assign_role)")
+    parser.add_argument("--workbench-name", help="Workbench name (for assign_role)")
     
     args = parser.parse_args()
     
@@ -278,6 +296,19 @@ def main():
         elif args.action == "create_agent":
             result = client.create_agent(args.agent)
             print("Agent Creation:", json.dumps(result, indent=2))
+            
+        elif args.action == "assign_role":
+            if not args.role:
+                print("Error: --role is required for assign_role action")
+                return
+            workbench_id = getattr(args, 'workbench_id', None)
+            workbench_name = getattr(args, 'workbench_name', None)
+            result = client.assign_role(args.agent, args.role, workbench_id, workbench_name)
+            print("Role Assignment:", json.dumps(result, indent=2))
+            
+        elif args.action == "get_roles":
+            result = client.get_agent_roles(args.agent)
+            print("Agent Roles:", json.dumps(result, indent=2))
             
     except Exception as e:
         print(f"Error: {e}")
