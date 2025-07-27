@@ -217,27 +217,29 @@ class ConnectionManager:
         prompts = [
             # Getting Started
             {"category": "🚀 Getting Started", "prompt": "help", "description": "Show all available commands"},
-            {"category": "🚀 Getting Started", "prompt": "agents", "description": "List all agents in the system"},
-            {"category": "🚀 Getting Started", "prompt": "workbenches", "description": "Show all workbenches with descriptions"},
+            {"category": "🚀 Getting Started", "prompt": "show list of all agents", "description": "List all agents in the system (natural language)"},
+            {"category": "🚀 Getting Started", "prompt": "show list of all workbenches", "description": "Show all workbenches with descriptions (natural language)"},
+            {"category": "🚀 Getting Started", "prompt": "agents", "description": "List all agents (short command)"},
+            {"category": "🚀 Getting Started", "prompt": "workbenches", "description": "Show all workbenches (short command)"},
             
             # Creation Operations
-            {"category": "✨ Create New Items", "prompt": "create-agent NewAgent", "description": "Create a new agent named 'NewAgent'"},
-            {"category": "✨ Create New Items", "prompt": "create-agent DataAnalyst", "description": "Create a data analyst agent"},
-            {"category": "✨ Create New Items", "prompt": "create-workbench Support \"Customer support operations\"", "description": "Create a Support workbench"},
-            {"category": "✨ Create New Items", "prompt": "create-workbench Compliance \"Regulatory compliance tasks\"", "description": "Create a Compliance workbench"},
-            {"category": "✨ Create New Items", "prompt": "create-task 6001", "description": "Create a new task with ID 6001"},
+            {"category": "✨ Create New Items", "prompt": "create agent NewAgent", "description": "Create a new agent using natural language"},
+            {"category": "✨ Create New Items", "prompt": "create-agent DataAnalyst", "description": "Create a data analyst agent (short command)"},
+            {"category": "✨ Create New Items", "prompt": "create workbench Support \"Customer support\"", "description": "Create Support workbench (natural language)"},
+            {"category": "✨ Create New Items", "prompt": "create-workbench Compliance \"Regulatory compliance tasks\"", "description": "Create a Compliance workbench (short command)"},
+            {"category": "✨ Create New Items", "prompt": "create task 6001", "description": "Create a new task using natural language"},
             {"category": "✨ Create New Items", "prompt": "create-task 6002 Chitra 1", "description": "Create task 6002 assigned to Chitra in Dispute workbench"},
             
             # Agent Management
-            {"category": "👥 Agent Management", "prompt": "agent-roles abhijit", "description": "Show all roles for abhijit"},
-            {"category": "👥 Agent Management", "prompt": "agent-roles Chitra", "description": "Show all roles for Chitra"},
-            {"category": "👥 Agent Management", "prompt": "agent-roles ashish", "description": "Show all roles for ashish"},
+            {"category": "👥 Agent Management", "prompt": "show agent roles abhijit", "description": "Show all roles for abhijit (natural language)"},
+            {"category": "👥 Agent Management", "prompt": "agent-roles Chitra", "description": "Show all roles for Chitra (short command)"},
+            {"category": "👥 Agent Management", "prompt": "roles for ashish", "description": "Show roles for ashish (natural language)"},
             
             # Workbench Operations
-            {"category": "🏢 Workbench Operations", "prompt": "roles 1", "description": "View roles in Dispute workbench"},
-            {"category": "🏢 Workbench Operations", "prompt": "roles 2", "description": "View roles in Transaction workbench"},
-            {"category": "🏢 Workbench Operations", "prompt": "roles 3", "description": "View roles in Account Holder workbench"},
-            {"category": "🏢 Workbench Operations", "prompt": "roles 4", "description": "View roles in Loan workbench"},
+            {"category": "🏢 Workbench Operations", "prompt": "show roles 1", "description": "View roles in Dispute workbench (natural language)"},
+            {"category": "🏢 Workbench Operations", "prompt": "roles 2", "description": "View roles in Transaction workbench (short command)"},
+            {"category": "🏢 Workbench Operations", "prompt": "show roles 3", "description": "View roles in Account Holder workbench (natural language)"},
+            {"category": "🏢 Workbench Operations", "prompt": "roles 4", "description": "View roles in Loan workbench (short command)"},
             
             # Role Management
             {"category": "🎭 Role Management", "prompt": "assign-role bulk_agent 2 Viewer", "description": "Assign bulk_agent as Viewer in Transaction workbench"},
@@ -302,11 +304,14 @@ class ConnectionManager:
         """Process MCP commands and return results"""
         try:
             # Parse command
-            parts = command.strip().split()
+            original_command = command.strip()
+            command_lower = original_command.lower()
+            parts = original_command.strip().split()
             if not parts:
                 return {"error": "Empty command"}
             
-            action = parts[0].lower()
+            # Normalize command - handle natural language
+            action = self.normalize_command(command_lower, parts)
             
             # Handle different commands
             if action == "help":
@@ -314,18 +319,18 @@ class ConnectionManager:
                     "type": "help",
                     "commands": [
                         "help - Show available commands",
-                        "agents - List all agents",
-                        "workbenches - List all workbenches",
+                        "agents / list agents / show agents - List all agents",
+                        "workbenches / list workbenches / show workbenches - List all workbenches",
                         "create-agent <name> - Create a new agent",
                         "create-workbench <name> \"<description>\" - Create a new workbench",
                         "create-task <id> [agent] [workbench_id] - Create a new task",
                         "tasks <agent> - Get tasks for agent",
                         "assign <agent> <task_id> [workbench_id] - Assign task to agent",
                         "status <task_id> <agent> <status> - Update task status",
-                        "roles <workbench_id> - Show workbench roles",
+                        "roles <workbench_id> / show roles <workbench_id> - Show workbench roles",
                         "assign-role <agent> <workbench_id> <role> - Assign workbench role",
-                        "agent-roles <agent> - Show agent's roles",
-                        "coverage - Show role coverage report",
+                        "agent-roles <agent> / show agent roles <agent> - Show agent's roles",
+                        "coverage / show coverage - Show role coverage report",
                         "stats <agent> - Get agent statistics"
                     ]
                 }
@@ -334,27 +339,23 @@ class ConnectionManager:
                 prompts = self.get_suggested_prompts()
                 return {"type": "suggested_prompts", "data": prompts}
             
-            elif action == "create-agent" and len(parts) > 1:
-                agent_name = parts[1]
+            elif action == "create-agent":
+                agent_name = self.extract_create_agent_name(original_command, parts)
+                if not agent_name:
+                    return {"error": "Please specify agent name. Example: create-agent NewAgent"}
                 return self.create_agent(agent_name, user)
             
-            elif action == "create-workbench" and len(parts) > 1:
-                workbench_name = parts[1]
-                # Handle description in quotes
-                description = ""
-                if len(parts) > 2:
-                    # Join remaining parts and remove quotes
-                    description = " ".join(parts[2:]).strip('"\'')
+            elif action == "create-workbench":
+                workbench_name, description = self.extract_create_workbench_params(original_command, parts)
+                if not workbench_name:
+                    return {"error": "Please specify workbench name. Example: create-workbench Support \"Customer support\""}
                 return self.create_workbench(workbench_name, description, user)
             
-            elif action == "create-task" and len(parts) > 1:
-                try:
-                    task_id = int(parts[1])
-                    agent = parts[2] if len(parts) > 2 else None
-                    workbench_id = int(parts[3]) if len(parts) > 3 else None
-                    return self.create_task(task_id, agent, workbench_id, user)
-                except ValueError:
-                    return {"error": "Task ID must be a number"}
+            elif action == "create-task":
+                task_id, agent, workbench_id = self.extract_create_task_params(original_command, parts)
+                if task_id is None:
+                    return {"error": "Please specify task ID. Example: create-task 6001 or create-task 6002 Chitra 1"}
+                return self.create_task(task_id, agent, workbench_id, user)
             
             elif action == "agents":
                 if self.mcp_client:
@@ -379,10 +380,13 @@ class ConnectionManager:
                 else:
                     return self.get_demo_data("workbenches")
             
-            elif action == "roles" and len(parts) > 1:
+            elif action == "roles":
+                workbench_id = self.extract_workbench_id(original_command, parts)
+                if workbench_id is None:
+                    return {"error": "Please specify workbench ID. Example: roles 1 or show roles 1"}
+                
                 if self.role_manager:
                     try:
-                        workbench_id = int(parts[1])
                         assignments = self.role_manager.get_workbench_role_assignments(workbench_id)
                         return {"type": "workbench_roles", "data": assignments}
                     except Exception as e:
@@ -390,12 +394,13 @@ class ConnectionManager:
                 else:
                     return {"error": "Workbench role manager not available"}
             
-            elif action == "assign-role" and len(parts) > 3:
+            elif action == "assign-role":
+                agent, workbench_id, role = self.extract_assign_role_params(original_command, parts)
+                if not all([agent, workbench_id, role]):
+                    return {"error": "Please specify agent, workbench ID, and role. Example: assign-role ashish 1 Assessor"}
+                
                 if self.role_manager:
                     try:
-                        agent = parts[1]
-                        workbench_id = int(parts[2])
-                        role = parts[3]
                         success = self.role_manager.assign_workbench_role(agent, workbench_id, role, user)
                         if success:
                             return {"type": "role_assignment", "message": f"✅ Assigned {role} to {agent} in workbench {workbench_id}"}
@@ -406,10 +411,13 @@ class ConnectionManager:
                 else:
                     return {"error": "Workbench role manager not available"}
             
-            elif action == "agent-roles" and len(parts) > 1:
+            elif action == "agent-roles":
+                agent = self.extract_agent_name(original_command, parts)
+                if not agent:
+                    return {"error": "Please specify agent name. Example: agent-roles abhijit"}
+                
                 if self.role_manager:
                     try:
-                        agent = parts[1]
                         roles = self.role_manager.get_agent_workbench_roles(agent)
                         return {"type": "agent_roles", "agent": agent, "data": roles}
                     except Exception as e:
@@ -427,37 +435,45 @@ class ConnectionManager:
                 else:
                     return {"error": "Workbench role manager not available"}
             
-            elif action == "tasks" and len(parts) > 1:
+            elif action == "tasks":
+                agent = self.extract_agent_name(original_command, parts)
+                if not agent:
+                    return {"error": "Please specify agent name. Example: tasks abhijit"}
+                
                 if self.mcp_client:
-                    agent = parts[1]
                     result = self.mcp_client.list_recent_tasks(agent, limit=10)
                     return {"type": "tasks", "agent": agent, "data": result}
                 else:
                     return {"error": "MCP client not available", "demo": True}
             
-            elif action == "assign" and len(parts) > 2:
+            elif action == "assign":
+                agent, task_id, workbench_id = self.extract_assign_params(original_command, parts)
+                if not all([agent, task_id]):
+                    return {"error": "Please specify agent and task ID. Example: assign abhijit 5001"}
+                
                 if self.mcp_client:
-                    agent = parts[1]
-                    task_id = int(parts[2])
-                    workbench_id = int(parts[3]) if len(parts) > 3 else None
                     result = self.mcp_client.assign_task(agent, task_id, workbench_id)
                     return {"type": "assignment", "data": result}
                 else:
                     return {"error": "MCP client not available", "demo": True}
             
-            elif action == "status" and len(parts) > 3:
+            elif action == "status":
+                task_id, agent, status = self.extract_status_params(original_command, parts)
+                if not all([task_id, agent, status]):
+                    return {"error": "Please specify task ID, agent, and status. Example: status 5001 abhijit completed"}
+                
                 if self.mcp_client:
-                    task_id = int(parts[1])
-                    agent = parts[2]
-                    status = parts[3]
                     result = self.mcp_client.update_task_status(task_id, agent, status)
                     return {"type": "status_update", "data": result}
                 else:
                     return {"error": "MCP client not available", "demo": True}
             
-            elif action == "stats" and len(parts) > 1:
+            elif action == "stats":
+                agent = self.extract_agent_name(original_command, parts)
+                if not agent:
+                    return {"error": "Please specify agent name. Example: stats abhijit"}
+                
                 if self.mcp_client:
-                    agent = parts[1]
                     task_count = self.mcp_client.get_agent_task_count(agent, days=7)
                     avg_time = self.mcp_client.average_completion_time(agent)
                     return {
@@ -470,10 +486,226 @@ class ConnectionManager:
                     return {"error": "MCP client not available", "demo": True}
             
             else:
-                return {"error": f"Unknown command: {action}. Type 'help' for available commands or 'prompts' for suggestions."}
+                # Suggest alternatives for common mistakes
+                suggestions = self.suggest_command_alternatives(command_lower)
+                error_msg = f"Unknown command: '{original_command}'. Type 'help' for available commands or 'prompts' for suggestions."
+                if suggestions:
+                    error_msg += f"\n\n💡 Did you mean: {suggestions}"
+                return {"error": error_msg}
         
         except Exception as e:
             return {"error": f"Error processing command: {str(e)}"}
+
+    def normalize_command(self, command_lower: str, parts: List[str]) -> str:
+        """Normalize natural language commands to standard actions"""
+        # Handle natural language patterns
+        if any(phrase in command_lower for phrase in ['show list of all workbenches', 'list all workbenches', 'show workbenches', 'list workbenches']):
+            return "workbenches"
+        elif any(phrase in command_lower for phrase in ['show list of all agents', 'list all agents', 'show agents', 'list agents']):
+            return "agents"
+        elif any(phrase in command_lower for phrase in ['show roles', 'list roles', 'roles in', 'workbench roles']):
+            return "roles"
+        elif any(phrase in command_lower for phrase in ['show coverage', 'coverage report', 'role coverage']):
+            return "coverage"
+        elif any(phrase in command_lower for phrase in ['show agent roles', 'agent roles', 'roles for']):
+            return "agent-roles"
+        elif any(phrase in command_lower for phrase in ['create agent', 'new agent', 'add agent']):
+            return "create-agent"
+        elif any(phrase in command_lower for phrase in ['create workbench', 'new workbench', 'add workbench']):
+            return "create-workbench"
+        elif any(phrase in command_lower for phrase in ['create task', 'new task', 'add task']):
+            return "create-task"
+        elif any(phrase in command_lower for phrase in ['assign role', 'give role', 'set role']):
+            return "assign-role"
+        
+        # Handle standard commands
+        action = parts[0].lower()
+        
+        # Command aliases
+        aliases = {
+            'show': 'workbenches',  # Default 'show' to workbenches
+            'list': 'workbenches',  # Default 'list' to workbenches  
+            'display': 'workbenches',
+            'view': 'workbenches',
+            'get': 'agents',
+            'fetch': 'agents'
+        }
+        
+        return aliases.get(action, action)
+
+    def extract_create_agent_name(self, command: str, parts: List[str]) -> str:
+        """Extract agent name from create agent command"""
+        # Handle natural language
+        if 'create agent' in command.lower() or 'new agent' in command.lower() or 'add agent' in command.lower():
+            words = command.split()
+            for i, word in enumerate(words):
+                if word.lower() in ['agent'] and i + 1 < len(words):
+                    return words[i + 1]
+        
+        # Handle standard format
+        if len(parts) > 1:
+            return parts[1]
+        
+        return ""
+
+    def extract_create_workbench_params(self, command: str, parts: List[str]) -> tuple:
+        """Extract workbench name and description from create workbench command"""
+        import re
+        
+        # Handle natural language
+        if 'create workbench' in command.lower() or 'new workbench' in command.lower():
+            # Extract after "workbench"
+            match = re.search(r'workbench\s+(\w+)(?:\s+"([^"]*)")?', command, re.IGNORECASE)
+            if match:
+                return match.group(1), match.group(2) or ""
+        
+        # Handle standard format
+        if len(parts) > 1:
+            workbench_name = parts[1]
+            description = ""
+            if len(parts) > 2:
+                description = " ".join(parts[2:]).strip('"\'')
+            return workbench_name, description
+        
+        return "", ""
+
+    def extract_create_task_params(self, command: str, parts: List[str]) -> tuple:
+        """Extract task parameters from create task command"""
+        # Handle natural language
+        if 'create task' in command.lower() or 'new task' in command.lower():
+            words = command.split()
+            for i, word in enumerate(words):
+                if word.lower() == 'task' and i + 1 < len(words):
+                    try:
+                        task_id = int(words[i + 1])
+                        agent = words[i + 2] if i + 2 < len(words) else None
+                        workbench_id = int(words[i + 3]) if i + 3 < len(words) else None
+                        return task_id, agent, workbench_id
+                    except (ValueError, IndexError):
+                        pass
+        
+        # Handle standard format
+        if len(parts) > 1:
+            try:
+                task_id = int(parts[1])
+                agent = parts[2] if len(parts) > 2 else None
+                workbench_id = int(parts[3]) if len(parts) > 3 else None
+                return task_id, agent, workbench_id
+            except ValueError:
+                pass
+        
+        return None, None, None
+
+    def extract_workbench_id(self, command: str, parts: List[str]) -> int:
+        """Extract workbench ID from roles command"""
+        # Look for numbers in the command
+        import re
+        numbers = re.findall(r'\d+', command)
+        if numbers:
+            try:
+                return int(numbers[0])
+            except ValueError:
+                pass
+        
+        # Fallback to parts
+        if len(parts) > 1:
+            try:
+                return int(parts[1])
+            except ValueError:
+                pass
+        
+        return None
+
+    def extract_agent_name(self, command: str, parts: List[str]) -> str:
+        """Extract agent name from command"""
+        # Handle natural language patterns
+        if 'roles for' in command.lower():
+            words = command.split()
+            for i, word in enumerate(words):
+                if word.lower() == 'for' and i + 1 < len(words):
+                    return words[i + 1]
+        
+        # Handle standard format
+        if len(parts) > 1:
+            return parts[1]
+        
+        return ""
+
+    def extract_assign_role_params(self, command: str, parts: List[str]) -> tuple:
+        """Extract assign role parameters"""
+        # Handle natural language
+        if 'assign role' in command.lower() or 'give role' in command.lower():
+            # Pattern: assign role <role> to <agent> in workbench <id>
+            import re
+            match = re.search(r'(?:assign|give)\s+role\s+(\w+)\s+to\s+(\w+)\s+in\s+workbench\s+(\d+)', command, re.IGNORECASE)
+            if match:
+                role, agent, workbench_id = match.groups()
+                return agent, int(workbench_id), role
+            
+            # Pattern: assign <agent> <workbench_id> <role>
+            words = command.split()
+            if len(words) >= 5:  # assign role agent workbench_id role
+                try:
+                    return words[2], int(words[3]), words[4]
+                except (ValueError, IndexError):
+                    pass
+        
+        # Handle standard format: assign-role agent workbench_id role
+        if len(parts) > 3:
+            try:
+                return parts[1], int(parts[2]), parts[3]
+            except ValueError:
+                pass
+        
+        return None, None, None
+
+    def extract_assign_params(self, command: str, parts: List[str]) -> tuple:
+        """Extract assign task parameters"""
+        if len(parts) > 2:
+            try:
+                agent = parts[1]
+                task_id = int(parts[2])
+                workbench_id = int(parts[3]) if len(parts) > 3 else None
+                return agent, task_id, workbench_id
+            except ValueError:
+                pass
+        
+        return None, None, None
+
+    def extract_status_params(self, command: str, parts: List[str]) -> tuple:
+        """Extract status update parameters"""
+        if len(parts) > 3:
+            try:
+                task_id = int(parts[1])
+                agent = parts[2]
+                status = parts[3]
+                return task_id, agent, status
+            except ValueError:
+                pass
+        
+        return None, None, None
+
+    def suggest_command_alternatives(self, command_lower: str) -> str:
+        """Suggest alternative commands for common mistakes"""
+        suggestions = []
+        
+        if 'show' in command_lower or 'list' in command_lower:
+            if 'workbench' in command_lower:
+                suggestions.append("'workbenches' or 'list workbenches'")
+            elif 'agent' in command_lower:
+                suggestions.append("'agents' or 'list agents'")
+            elif 'role' in command_lower:
+                suggestions.append("'roles 1' or 'show roles 1'")
+        
+        if 'create' in command_lower:
+            if 'agent' in command_lower:
+                suggestions.append("'create-agent NewAgent'")
+            elif 'workbench' in command_lower:
+                suggestions.append("'create-workbench Support \"Description\"'")
+            elif 'task' in command_lower:
+                suggestions.append("'create-task 6001'")
+        
+        return ", ".join(suggestions[:3])  # Limit to 3 suggestions
 
 manager = ConnectionManager()
 
