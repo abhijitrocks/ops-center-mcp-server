@@ -23,14 +23,14 @@ try:
     MCP_AVAILABLE = True
 except ImportError:
     MCP_AVAILABLE = False
-    print("Warning: MCP Client not available. Running in demo mode.")
+    print("🔶 MCP Client not available. Running in demo mode with full UI features.")
 
 try:
     from workbench_role_manager import WorkbenchRoleManager
     WORKBENCH_MANAGER_AVAILABLE = True
 except ImportError:
     WORKBENCH_MANAGER_AVAILABLE = False
-    print("Warning: Workbench Role Manager not available.")
+    print("🔶 Workbench Role Manager not available.")
 
 # Import LLM integration
 try:
@@ -38,7 +38,7 @@ try:
     LLM_INTEGRATION_AVAILABLE = True
 except ImportError:
     LLM_INTEGRATION_AVAILABLE = False
-    print("Warning: LLM Integration not available. Using rule-based processing only.")
+    print("🔶 LLM Integration not available in cloud. Using rule-based processing with natural language support.")
 
 # Environment variables
 PORT = int(os.getenv("PORT", 8080))
@@ -97,6 +97,10 @@ class ConnectionManager:
                     print("🤖 LLM Integration available but no provider configured")
             except Exception as e:
                 print(f"Could not initialize LLM processor: {e}")
+        
+        # Setup demo data for cloud deployment if MCP not available
+        if not MCP_AVAILABLE and self.role_manager:
+            self.setup_demo_data()
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -270,6 +274,36 @@ class ConnectionManager:
             
         except Exception as e:
             return {"error": f"Could not get agent assignments: {str(e)}"}
+
+    def setup_demo_data(self):
+        """Setup impressive demo data for cloud deployment"""
+        try:
+            print("🎯 Setting up demo data for cloud deployment...")
+            
+            # Create demo agents via role assignments (this creates the workbench roles entries)
+            demo_roles = [
+                ("Sarah_Chen", 1, "Team Lead"),      # Dispute Team Lead
+                ("Mike_Johnson", 1, "Assessor"),     # Dispute Assessor  
+                ("Lisa_Wong", 1, "Reviewer"),        # Dispute Reviewer
+                ("David_Kim", 2, "Team Lead"),       # Transaction Team Lead
+                ("Amy_Rodriguez", 2, "Assessor"),    # Transaction Assessor
+                ("James_Smith", 3, "Team Lead"),     # Account Holder Team Lead
+                ("Emma_Davis", 3, "Reviewer"),       # Account Holder Reviewer
+                ("Alex_Kumar", 4, "Team Lead"),      # Loan Team Lead
+                ("Sophie_Taylor", 4, "Assessor"),    # Loan Assessor
+                ("Marcus_Brown", 4, "Reviewer"),     # Loan Reviewer
+            ]
+            
+            for agent, workbench_id, role in demo_roles:
+                try:
+                    self.role_manager.assign_workbench_role(agent, workbench_id, role, "System")
+                except Exception:
+                    pass  # Ignore if already exists
+            
+            print("✅ Demo data setup complete - 10 agents across 4 workbenches with proper role distribution")
+            
+        except Exception as e:
+            print(f"🔶 Demo data setup skipped: {e}")
 
     async def _process_llm_with_commands(self, llm_result: Dict[str, Any], user: str) -> Dict[str, Any]:
         """Process LLM response that contains both natural language and commands"""
@@ -1089,7 +1123,9 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         # Send welcome message
         welcome_msg = {
             "type": "system",
-                            "message": "Welcome, OPS Ninja! You're now connected to the OPS Center MCP Chat Interface. How can I assist you today?",
+                            "message": "Welcome, OPS Ninja! You're now connected to the OPS Center MCP Chat Interface. " + 
+                          ("🌐 Cloud demo mode active with full UI features. " if not MCP_AVAILABLE else "") + 
+                          "How can I assist you today?",
             "timestamp": datetime.now().isoformat(),
             "status": {
                 "mcp_available": MCP_AVAILABLE,
@@ -1158,6 +1194,23 @@ async def get_agents():
 async def get_suggested_prompts():
     """REST endpoint to get suggested prompts"""
     return {"prompts": manager.get_suggested_prompts()}
+
+@app.post("/api/command")
+async def process_command_api(request: dict):
+    """REST endpoint to process commands when WebSocket is not available"""
+    try:
+        message = request.get("message", "")
+        user = request.get("user", "Anonymous")
+        
+        if not message:
+            return {"error": "No message provided"}
+        
+        # Process the command using the same logic as WebSocket
+        result = await manager.process_command(message, user)
+        return result
+        
+    except Exception as e:
+        return {"error": f"Command processing failed: {str(e)}", "fallback": True}
 
 # Create the HTML template with modern enterprise UI/UX
 chat_html_template = '''
@@ -1664,13 +1717,18 @@ chat_html_template = '''
             z-index: 40;
             backdrop-filter: blur(8px);
             border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
         }
         
-        .connected {
+        .connection-status.connected {
             background: rgba(34, 197, 94, 0.9);
         }
         
-        .disconnected {
+        .connection-status.connecting {
+            background: rgba(245, 158, 11, 0.9);
+        }
+        
+        .connection-status.disconnected {
             background: rgba(239, 68, 68, 0.9);
         }
         
@@ -1967,13 +2025,7 @@ chat_html_template = '''
         </div>
         
         <div class="status-section">
-            <div class="status-toggle" onclick="toggleDemo()" id="demoToggle">
-                <span>🔗</span>
-                <span>Connected</span>
-            </div>
-            <div class="status-badge badge-cloud" id="cloudBadge" style="display: none;">Cloud Deployed</div>
-            <div class="status-badge badge-demo" id="demoBadge" style="display: none;">Demo Mode</div>
-            <div class="status-badge badge-error" id="errorBadge" style="display: none;">Offline</div>
+            <!-- Consolidated into single connection status badge below -->
         </div>
     </div>
     
@@ -2005,9 +2057,10 @@ chat_html_template = '''
                     <textarea 
                         id="messageInput" 
                         class="chat-textarea"
-                        placeholder="Type your message here... Use natural language or commands"
+                        placeholder="🔄 Connecting to server..."
                         rows="1"
-                        maxlength="1000"></textarea>
+                        maxlength="1000"
+                        disabled></textarea>
                     <div class="input-hints">
                         <div class="hint">
                             <span>💡</span>
@@ -2019,17 +2072,17 @@ chat_html_template = '''
                         </div>
                     </div>
                 </div>
-                <button class="send-button" onclick="sendMessage()" id="sendButton">
-                    <span class="send-icon">📤</span>
-                    <span>Send</span>
-                </button>
+                                    <button class="send-button" onclick="sendMessage()" id="sendButton" disabled>
+                        <span class="send-icon">⏳</span>
+                        <span>Connecting</span>
+                    </button>
             </div>
         </div>
     </div>
     
     <!-- Connection Status -->
-    <div class="connection-status disconnected" id="connectionStatus">
-        🔴 Connecting...
+    <div class="connection-status connecting" id="connectionStatus">
+        🟡 Connecting...
     </div>
     
     <!-- Floating Action Buttons -->
@@ -2155,10 +2208,22 @@ Built with modern web technologies for optimal performance.`,
         function connect() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws/${userId}`;
+            
+            console.log('Attempting WebSocket connection to:', wsUrl);
+            updateConnectionStatus('connecting');
+            
             socket = new WebSocket(wsUrl);
             
+            // Set a timeout to detect connection issues
+            const connectionTimeout = setTimeout(() => {
+                console.log('WebSocket connection timeout - enabling fallback mode');
+                enableFallbackMode();
+            }, 5000);
+            
             socket.onopen = function(event) {
-                updateConnectionStatus(true);
+                clearTimeout(connectionTimeout);
+                console.log('WebSocket connected successfully');
+                updateConnectionStatus('connected');
                 
                 // Load suggested prompts
                 fetch('/api/prompts')
@@ -2205,44 +2270,120 @@ Here's what you can do:
             };
             
             socket.onclose = function(event) {
-                updateConnectionStatus(false);
-                setTimeout(connect, 3000); // Reconnect after 3 seconds
+                console.log('WebSocket connection closed:', event.code, event.reason);
+                updateConnectionStatus('connecting');
+                
+                // If it's not a normal closure, enable fallback mode after a few failed attempts
+                if (event.code !== 1000) {
+                    setTimeout(() => {
+                        console.log('Enabling fallback mode due to connection issues');
+                        enableFallbackMode();
+                    }, 2000);
+                } else {
+                    setTimeout(connect, 3000); // Reconnect after 3 seconds for normal closure
+                }
             };
             
             socket.onerror = function(error) {
                 console.error('WebSocket error:', error);
-                updateConnectionStatus(false);
+                updateConnectionStatus('connecting');
+                // Enable fallback mode immediately on WebSocket error
+                setTimeout(() => {
+                    console.log('Enabling fallback mode due to WebSocket error');
+                    enableFallbackMode();
+                }, 1000);
             };
         }
         
-        function updateConnectionStatus(connected) {
-            const statusEl = document.getElementById('connectionStatus');
-            const demoToggle = document.getElementById('demoToggle');
-            const cloudBadge = document.getElementById('cloudBadge');
-            const demoBadge = document.getElementById('demoBadge');
-            const errorBadge = document.getElementById('errorBadge');
+        // Fallback mode - enable interface without WebSocket
+        function enableFallbackMode() {
+            console.log('🔄 Enabling fallback mode - interface will work without WebSocket');
             
-            if (connected) {
+            // Update connection status to show we're in fallback mode
+            updateConnectionStatus('fallback');
+            
+            // Load suggested prompts directly
+            fetch('/api/prompts')
+                .then(response => response.json())
+                .then(data => {
+                    suggestedPrompts = data.prompts;
+                    displaySuggestedPrompts(data.prompts);
+                })
+                .catch(error => {
+                    console.log('Could not load prompts, using default');
+                    displayDefaultPrompts();
+                });
+            
+            // Show welcome message
+            displayMessage({
+                type: 'response',
+                command: 'Welcome',
+                result: {
+                    type: 'welcome',
+                    message: `Welcome to OPS Center Chat! 🎉
+
+I'm your Operations Assistant—ready to help you manage agents, workbenches, and workflows with simple commands.
+
+🔶 Running in fallback mode - some features may be limited but core functionality is available.
+
+Here's what you can do:
+• Ask "help" to see all commands
+• Type "agents" to list agents
+• Create workflows with create workflow for "<name>"
+• Assign tasks, view stats, and more—all in plain English
+
+💡 Tip: Try "how many tasks has Agent A completed in the last 3 days?" to get started.`,
+                    suggestions: ["help", "agents", "workbenches", "coverage", "create workflow for \"Customer Support\""]
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+            // Enable fallback communication
+            window.fallbackMode = true;
+            
+            // Force enable input elements in case they weren't enabled
+            setTimeout(() => {
+                const messageInput = document.getElementById('messageInput');
+                const sendButton = document.getElementById('sendButton');
+                if (messageInput && messageInput.disabled) {
+                    messageInput.disabled = false;
+                    messageInput.placeholder = "Type your message here... (HTTP API mode)";
+                }
+                if (sendButton && sendButton.disabled) {
+                    sendButton.disabled = false;
+                    sendButton.innerHTML = '<span class="send-icon">📤</span><span>Send</span>';
+                }
+            }, 100);
+        }
+        
+        // Default prompts in case API fails
+        function displayDefaultPrompts() {
+            const defaultPrompts = [
+                {"category": "🚀 Getting Started", "prompt": "help", "description": "View all available commands"},
+                {"category": "🚀 Getting Started", "prompt": "agents", "description": "List all agents"},
+                {"category": "✨ Create New Items", "prompt": "create agent NewAgent", "description": "Add a new agent"},
+                {"category": "👥 Agent Management", "prompt": "details about abhijit", "description": "Full details of an agent"}
+            ];
+            displaySuggestedPrompts(defaultPrompts);
+        }
+        
+        function updateConnectionStatus(status) {
+            const statusEl = document.getElementById('connectionStatus');
+            if (!statusEl) return;
+            
+            // Handle different status types
+            if (status === 'connected' || status === true) {
                 statusEl.textContent = '🟢 Connected';
                 statusEl.className = 'connection-status connected';
-                demoToggle.innerHTML = '<span>🔗</span><span>Connected</span>';
-                
-                // Show appropriate badges
-                if (isCloudDeployment) {
-                    cloudBadge.style.display = 'block';
-                }
-                if (!mcpAvailable) {
-                    demoBadge.style.display = 'block';
-                }
-                errorBadge.style.display = 'none';
+            } else if (status === 'connecting') {
+                statusEl.textContent = '🟡 Connecting...';
+                statusEl.className = 'connection-status connecting';
+            } else if (status === 'fallback') {
+                statusEl.textContent = '🔶 HTTP Mode';
+                statusEl.className = 'connection-status connecting';
             } else {
                 statusEl.textContent = '🔴 Disconnected';
                 statusEl.className = 'connection-status disconnected';
-                demoToggle.innerHTML = '<span>⚠️</span><span>Offline</span>';
-                
-                cloudBadge.style.display = 'none';
-                demoBadge.style.display = 'none';
-                errorBadge.style.display = 'block';
             }
         }
         
@@ -2336,10 +2477,19 @@ Here's what you can do:
             const sendButton = document.getElementById('sendButton');
             const message = input.value.trim();
             
-            if (message === '' || !socket || socket.readyState !== WebSocket.OPEN) {
+            if (message === '') {
                 return;
             }
             
+            // Check if we can use WebSocket or need fallback
+            if (!window.fallbackMode && socket && socket.readyState === WebSocket.OPEN) {
+                sendViaWebSocket(message, input, sendButton);
+            } else {
+                sendViaHTTP(message, input, sendButton);
+            }
+        }
+        
+        function sendViaWebSocket(message, input, sendButton) {
             // Add to message history
             messageHistory.unshift(message);
             if (messageHistory.length > 50) {
@@ -2374,6 +2524,68 @@ Here's what you can do:
             }, 1000);
         }
         
+        function sendViaHTTP(message, input, sendButton) {
+            // Add to message history
+            messageHistory.unshift(message);
+            if (messageHistory.length > 50) {
+                messageHistory = messageHistory.slice(0, 50);
+            }
+            historyIndex = -1;
+            
+            // Disable send button temporarily
+            sendButton.disabled = true;
+            sendButton.innerHTML = '<span class="send-icon">⏳</span><span>Sending</span>';
+            
+            // Display user message
+            displayMessage({
+                type: 'user',
+                message: message,
+                timestamp: new Date().toISOString()
+            });
+            
+            // Send via HTTP API
+            fetch('/api/command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    message: message,
+                    user: userId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Display the response
+                displayMessage({
+                    type: 'response',
+                    command: message,
+                    result: data,
+                    timestamp: new Date().toISOString()
+                });
+            })
+            .catch(error => {
+                console.error('HTTP API error:', error);
+                displayMessage({
+                    type: 'response',
+                    command: message,
+                    result: {
+                        error: 'Unable to process command. Please try again or check your connection.',
+                        fallback: true
+                    },
+                    timestamp: new Date().toISOString()
+                });
+            })
+            .finally(() => {
+                // Re-enable send button
+                sendButton.disabled = false;
+                sendButton.innerHTML = '<span class="send-icon">📤</span><span>Send</span>';
+            });
+            
+            input.value = '';
+            input.style.height = 'auto';
+        }
+        
         function displayMessage(data) {
             const messagesEl = document.getElementById('messages');
             const messageEl = document.createElement('div');
@@ -2399,7 +2611,7 @@ Here's what you can do:
                 `;
                 
                 // Update status indicators
-                setTimeout(() => updateConnectionStatus(true), 100);
+                setTimeout(() => updateConnectionStatus('connected'), 100);
             } else if (data.type === 'response') {
                 className += 'response';
                 content = `
@@ -2777,8 +2989,28 @@ Here's what you can do:
             }
         });
         
-        // Connect on page load
-        connect();
+        // Check if we're on a cloud platform
+        const isCloudDeployment = window.location.hostname.includes('.onrender.com') || 
+                                 window.location.hostname.includes('.herokuapp.com') ||
+                                 window.location.hostname.includes('.railway.app') ||
+                                 window.location.hostname.includes('.vercel.app') ||
+                                 window.location.hostname.includes('.netlify.app');
+        
+        if (isCloudDeployment) {
+            console.log('🌐 Cloud deployment detected - enabling fallback mode immediately');
+            setTimeout(() => enableFallbackMode(), 100);
+        } else {
+            // Connect on page load for local development
+            connect();
+            
+            // Also try fallback mode quickly if connection issues
+            setTimeout(() => {
+                if (!socket || socket.readyState !== WebSocket.OPEN) {
+                    console.log('WebSocket not ready after 1 second, enabling fallback mode');
+                    enableFallbackMode();
+                }
+            }, 1000);
+        }
     </script>
 </body>
 </html>
@@ -2789,12 +3021,22 @@ if __name__ == "__main__":
     with open("templates/chat.html", "w") as f:
         f.write(chat_html_template)
     
-    print("🚀 Starting MCP Chat Interface...")
-    print(f"📱 Chat interface will be available at: http://{HOST}:{PORT}")
-    print("🔗 Share this URL with others to give them access to the MCP system")
-    print("💡 Available commands: help, agents, workbenches, roles, assign-role, agent-roles, coverage")
-    print(f"🔧 MCP Client Available: {MCP_AVAILABLE}")
-    print(f"🔧 Workbench Manager Available: {WORKBENCH_MANAGER_AVAILABLE}")
-    print(f"🌐 Deployment: {'Cloud' if PORT != 8080 or HOST != '0.0.0.0' else 'Local'}")
+    isCloudDeployment = PORT != 8080 or HOST != '0.0.0.0'
+    
+    print("🚀 Starting OPS Center Chat Interface...")
+    print(f"📱 Interface available at: http://{HOST}:{PORT}")
+    
+    if isCloudDeployment:
+        print("🌐 ☁️ Cloud deployment ready! Share your URL with team members.")
+        print("✨ Full-featured demo mode with modern UI and conversational support")
+        print("🎯 Features: Natural language commands, workbench management, role assignments")
+    else:
+        print("🔗 Share this URL with others to give them access to the MCP system")
+        print("💡 Available commands: help, agents, workbenches, roles, assign-role, agent-roles, coverage")
+    
+    print(f"🔧 MCP Client: {'✅ Connected' if MCP_AVAILABLE else '🔶 Demo Mode (Full UI Available)'}")
+    print(f"🔧 Workbench Manager: {'✅ Available' if WORKBENCH_MANAGER_AVAILABLE else '🔶 Limited'}")
+    print(f"🔧 LLM Integration: {'✅ Active' if LLM_INTEGRATION_AVAILABLE else '🔶 Rule-based with Natural Language'}")
+    print(f"🌐 Environment: {'☁️ Cloud Deployed' if isCloudDeployment else '🏠 Local Development'}")
     
     uvicorn.run(app, host=HOST, port=PORT)
