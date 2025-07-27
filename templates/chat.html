@@ -648,7 +648,15 @@
             
             if (result.type === 'agents') {
                 const agents = result.data.agents || [];
-                return `<strong>👥 Agents (${agents.length}):</strong><br>${agents.join(', ')}`;
+                let html = '';
+                
+                // Handle count queries specially
+                if (result.data.count_query && result.data.message) {
+                    html += `<strong>📊 ${result.data.message}</strong><br><br>`;
+                }
+                
+                html += `<strong>👥 Agents (${agents.length}):</strong><br>${agents.join(', ')}`;
+                return html;
             }
             
             if (result.type === 'workbenches') {
@@ -676,8 +684,31 @@
             }
             
             if (result.type === 'agent_roles') {
-                const roles = result.data;
-                let html = `<strong>🎭 Roles for ${result.agent}:</strong><div class="workbench-list">`;
+                const agentData = result.data;
+                const roles = agentData.roles || agentData; // Handle both old and new format
+                
+                let html = '';
+                
+                // Check if this is a details request
+                if (agentData.is_details_request) {
+                    html += `<strong>📋 Agent Details: ${result.agent}</strong><br><br>`;
+                    
+                    // Add task information if available
+                    if (agentData.task_count) {
+                        html += `<strong>📊 Task Statistics:</strong><br>`;
+                        html += `<div class="workbench-item">Recent task count: ${JSON.stringify(agentData.task_count)}</div>`;
+                    }
+                    
+                    if (agentData.recent_tasks) {
+                        html += `<strong>📋 Recent Tasks:</strong><br>`;
+                        html += `<div class="workbench-item">${agentData.recent_tasks.length} recent tasks</div>`;
+                    }
+                    
+                    html += `<br><strong>🎭 Role Assignments:</strong><div class="workbench-list">`;
+                } else {
+                    html += `<strong>🎭 Roles for ${result.agent}:</strong><div class="workbench-list">`;
+                }
+                
                 if (roles.length === 0) {
                     html += '<div class="role-assignment">No roles assigned</div>';
                 } else {
