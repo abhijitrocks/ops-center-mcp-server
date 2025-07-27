@@ -2071,7 +2071,7 @@ chat_html_template = '''
                         </div>
                     </div>
                 </div>
-                                    <button class="send-button" onclick="sendMessage()" id="sendButton">
+                                    <button class="send-button" id="sendButton">
                         <span class="send-icon">📤</span>
                         <span>Send</span>
                     </button>
@@ -2101,6 +2101,9 @@ chat_html_template = '''
     </div>
     
     <script>
+        // EMERGENCY DEBUG - Test if script loads
+        console.log('🚨 SCRIPT LOADING - JavaScript started');
+        
         let socket;
         let userId = 'User_' + Math.random().toString(36).substr(2, 9);
         let mcpAvailable = false;
@@ -2108,6 +2111,8 @@ chat_html_template = '''
         let isCloudDeployment = false;
         let suggestedPrompts = [];
         let messageHistory = [];
+        
+        console.log('🔧 Variables initialized, userId:', userId);
         let historyIndex = -1;
         let collapsedCategories = new Set();
         
@@ -3019,6 +3024,41 @@ Here's what you can do:
         // IMMEDIATE INTERFACE ACTIVATION - No delays, no connections
         console.log('🚨 IMMEDIATE INTERFACE ACTIVATION - Enabling NOW');
         
+        // Test if JavaScript is working at all
+        console.log('🔧 JavaScript is running');
+        console.log('🔧 Document ready state:', document.readyState);
+        
+        // Test basic elements
+        const testInput = document.getElementById('messageInput');
+        const testButton = document.getElementById('sendButton');
+        console.log('🔧 Input element found:', !!testInput);
+        console.log('🔧 Send button found:', !!testButton);
+        
+        // Add click handler directly to test
+        if (testButton) {
+            // Remove any existing onclick
+            testButton.removeAttribute('onclick');
+            
+            // Add direct event listener
+            testButton.addEventListener('click', function(e) {
+                e.preventDefault();
+                console.log('🔥 DIRECT CLICK HANDLER FIRED!');
+                
+                // Get message and send it
+                const input = document.getElementById('messageInput');
+                const message = input.value.trim();
+                console.log('📝 Got message:', message);
+                
+                if (message) {
+                    sendViaHTTP(message, input, testButton);
+                    input.value = '';
+                } else {
+                    alert('Please type a message first!');
+                }
+            });
+            console.log('🔧 Direct click handler added');
+        }
+        
         // Enable fallback mode immediately
         window.fallbackMode = true;
         
@@ -3031,6 +3071,22 @@ Here's what you can do:
             messageInput.placeholder = "Type your command here... (Interface Ready!)";
             messageInput.focus();
             console.log('✅ Input enabled immediately');
+            
+            // Add Enter key handler
+            messageInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    console.log('⌨️ Enter key pressed');
+                    
+                    const message = messageInput.value.trim();
+                    if (message) {
+                        const sendBtn = document.getElementById('sendButton');
+                        sendViaHTTP(message, messageInput, sendBtn);
+                        messageInput.value = '';
+                    }
+                }
+            });
+            console.log('⌨️ Enter key handler added');
         }
         
         if (sendButton) {
