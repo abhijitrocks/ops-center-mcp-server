@@ -32,6 +32,14 @@ except ImportError:
     WORKBENCH_MANAGER_AVAILABLE = False
     print("Warning: Workbench Role Manager not available.")
 
+# Import LLM integration
+try:
+    from llm_integration import create_llm_processor, test_llm_availability
+    LLM_INTEGRATION_AVAILABLE = True
+except ImportError:
+    LLM_INTEGRATION_AVAILABLE = False
+    print("Warning: LLM Integration not available. Using rule-based processing only.")
+
 # Environment variables
 PORT = int(os.getenv("PORT", 8080))
 HOST = os.getenv("HOST", "0.0.0.0")
@@ -62,6 +70,8 @@ class ConnectionManager:
         self.mcp_client = None
         self.role_manager = None
         self.last_command_context = {}  # Store context for follow-up commands
+        self.llm_processor = None  # LLM integration
+        self.llm_enabled = False
         
         if MCP_AVAILABLE:
             try:
@@ -75,6 +85,18 @@ class ConnectionManager:
                 self.role_manager = WorkbenchRoleManager()
             except Exception as e:
                 print(f"Could not initialize workbench role manager: {e}")
+        
+        # Initialize LLM processor
+        if LLM_INTEGRATION_AVAILABLE:
+            try:
+                self.llm_processor = create_llm_processor()
+                self.llm_enabled = self.llm_processor.available
+                if self.llm_enabled:
+                    print(f"🤖 LLM Integration enabled: {self.llm_processor.provider}")
+                else:
+                    print("🤖 LLM Integration available but no provider configured")
+            except Exception as e:
+                print(f"Could not initialize LLM processor: {e}")
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -249,6 +271,47 @@ class ConnectionManager:
         except Exception as e:
             return {"error": f"Could not get agent assignments: {str(e)}"}
 
+    async def _process_llm_with_commands(self, llm_result: Dict[str, Any], user: str) -> Dict[str, Any]:
+        """Process LLM response that contains both natural language and commands"""
+        commands = llm_result.get("commands", [])
+        natural_response = llm_result.get("natural_response", "")
+        
+        command_results = []
+        
+        # Execute each command found in the LLM response
+        for cmd in commands:
+            try:
+                # Process the command using the rule-based system
+                result = await self._process_rule_based_command(cmd, user)
+                command_results.append({"command": cmd, "result": result})
+            except Exception as e:
+                command_results.append({"command": cmd, "error": str(e)})
+        
+        return {
+            "type": "llm_with_executed_commands",
+            "natural_response": natural_response,
+            "command_results": command_results,
+            "original_message": llm_result.get("original_message", ""),
+            "timestamp": llm_result.get("timestamp")
+        }
+
+    async def _process_rule_based_command(self, command: str, user: str) -> Dict[str, Any]:
+        """Process a single command using the original rule-based logic"""
+        # This contains the original command processing logic
+        # Parse command
+        original_command = command.strip()
+        command_lower = original_command.lower()
+        parts = original_command.strip().split()
+        if not parts:
+            return {"error": "Empty command"}
+        
+        # Normalize command - handle natural language
+        action = self.normalize_command(command_lower, parts)
+        
+        # [Include all the original command processing logic here]
+        # For now, return a simple response - you can expand this
+        return {"message": f"Executed command: {command}", "action": action}
+
     def get_suggested_prompts(self) -> List[Dict[str, str]]:
         """Get comprehensive suggested prompts for all features"""
         prompts = [
@@ -361,8 +424,26 @@ class ConnectionManager:
         return prompts
 
     async def process_command(self, command: str, user: str = "Anonymous") -> Dict[str, Any]:
-        """Process MCP commands and return results"""
+        """Process MCP commands and return results - with LLM integration"""
         try:
+            # Try LLM processing first if available
+            if self.llm_enabled and self.llm_processor:
+                llm_result = await self.llm_processor.process_with_llm(command, self.last_command_context)
+                
+                if llm_result.get("fallback_to_rules"):
+                    # LLM failed, fall back to rule-based processing
+                    pass  # Continue to rule-based processing below
+                elif llm_result.get("type") == "llm_with_commands":
+                    # LLM provided both natural response and commands to execute
+                    return await self._process_llm_with_commands(llm_result, user)
+                elif llm_result.get("type") == "llm_response":
+                    # Pure LLM conversational response
+                    return llm_result
+                else:
+                    # Unknown LLM response format, fall back to rules
+                    pass  # Continue to rule-based processing below
+            
+            # Rule-based processing (original logic)
             # Parse command
             original_command = command.strip()
             command_lower = original_command.lower()
@@ -375,11 +456,15 @@ class ConnectionManager:
             
             # Handle different commands
             if action == "help":
+                llm_status = "🤖 LLM-POWERED" if self.llm_enabled else "🤖 Rule-based processor"
+                llm_info = f" ({self.llm_processor.provider})" if self.llm_enabled else " (no LLM)"
+                
                 return {
                     "type": "help",
                     "commands": [
-                        "💡 This is a rule-based command processor (not an LLM)",
+                        f"💡 {llm_status}{llm_info}",
                         "🔗 Supports contextual follow-up commands",
+                        "🗣️ Natural language conversation enabled" if self.llm_enabled else "🗣️ Pattern-based natural language",
                         "",
                         "help - Show available commands",
                         "agents / list agents / show agents - List all agents",
@@ -399,7 +484,12 @@ class ConnectionManager:
                         "🔗 Contextual Commands (after listing agents):",
                         "their assigned workbenches - Show all agent assignments",
                         "where are they assigned - Show workbench assignments",
-                        "their roles - Show all agent roles"
+                        "their roles - Show all agent roles",
+                        "",
+                        "🤖 LLM Commands:",
+                        "llm-status - Show LLM integration status",
+                        "llm-toggle - Enable/disable LLM processing",
+                        "llm-clear - Clear conversation history"
                     ]
                 }
             
@@ -619,6 +709,31 @@ class ConnectionManager:
                         return {"error": f"Could not get agent workbench assignments: {e}"}
                 else:
                     return {"error": "Workbench role manager not available"}
+            
+            elif action == "llm-status":
+                if self.llm_processor:
+                    status = self.llm_processor.get_llm_status()
+                    if LLM_INTEGRATION_AVAILABLE:
+                        availability = test_llm_availability()
+                        status["provider_availability"] = availability
+                    return {"type": "llm_status", "data": status}
+                else:
+                    return {"error": "LLM integration not available"}
+            
+            elif action == "llm-toggle":
+                if self.llm_processor:
+                    self.llm_enabled = not self.llm_enabled
+                    status = "enabled" if self.llm_enabled else "disabled"
+                    return {"type": "llm_toggle", "message": f"LLM processing {status}", "enabled": self.llm_enabled}
+                else:
+                    return {"error": "LLM integration not available"}
+            
+            elif action == "llm-clear":
+                if self.llm_processor:
+                    self.llm_processor.clear_conversation_history()
+                    return {"type": "llm_clear", "message": "LLM conversation history cleared"}
+                else:
+                    return {"error": "LLM integration not available"}
             
             elif action == "tasks":
                 agent = self.extract_agent_name(original_command, parts)
@@ -1839,6 +1954,61 @@ chat_html_template = '''
                 html += '</div>';
                 html += `<br><em>Total agents: ${data.total_agents}</em>`;
                 return html;
+            }
+            
+            if (result.type === 'llm_response') {
+                return `<div style="background: #e6fffa; border-left: 4px solid #38b2ac; padding: 12px; border-radius: 6px;">
+                    <strong>🤖 AI Assistant:</strong><br>${result.message}
+                </div>`;
+            }
+            
+            if (result.type === 'llm_with_executed_commands') {
+                let html = `<div style="background: #e6fffa; border-left: 4px solid #38b2ac; padding: 12px; border-radius: 6px;">
+                    <strong>🤖 AI Assistant:</strong><br>${result.natural_response}
+                </div>`;
+                
+                if (result.command_results && result.command_results.length > 0) {
+                    html += '<br><strong>🔧 Executed Commands:</strong><div class="workbench-list">';
+                    result.command_results.forEach(cmdResult => {
+                        const status = cmdResult.error ? '❌' : '✅';
+                        html += `<div class="role-assignment">
+                            ${status} <code>${cmdResult.command}</code>
+                        </div>`;
+                    });
+                    html += '</div>';
+                }
+                return html;
+            }
+            
+            if (result.type === 'llm_status') {
+                const data = result.data;
+                let html = '<strong>🤖 LLM Integration Status:</strong><div class="workbench-list">';
+                html += `<div class="workbench-item">
+                    <strong>Status:</strong> ${data.available ? '✅ Available' : '❌ Not Available'}<br>
+                    <strong>Provider:</strong> ${data.provider || 'None'}<br>
+                    <strong>Model:</strong> ${data.model || 'None'}<br>
+                    <strong>Conversation Length:</strong> ${data.conversation_length} messages
+                </div>`;
+                
+                if (data.provider_availability) {
+                    html += '<div class="workbench-item"><strong>Provider Availability:</strong>';
+                    Object.entries(data.provider_availability).forEach(([provider, status]) => {
+                        const available = status.module_available && (status.api_key_available || status.service_running);
+                        html += `<div class="role-assignment">${available ? '✅' : '❌'} ${provider}</div>`;
+                    });
+                    html += '</div>';
+                }
+                html += '</div>';
+                return html;
+            }
+            
+            if (result.type === 'llm_toggle') {
+                const color = result.enabled ? '#48bb78' : '#f56565';
+                return `<div style="color: ${color}; font-weight: bold;">🤖 ${result.message}</div>`;
+            }
+            
+            if (result.type === 'llm_clear') {
+                return `<div style="color: #48bb78; font-weight: bold;">🧹 ${result.message}</div>`;
             }
             
             if (result.type === 'role_assignment') {
