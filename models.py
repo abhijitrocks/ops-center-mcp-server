@@ -60,3 +60,21 @@ class HistoryTaskInfo(SQLModel, table=True):
         default=None,
         sa_column=Column(JSON, nullable=True)
     )
+
+
+class Workbench(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(unique=True)
+    description: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorkbenchRoles(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workbench_id: int = Field(foreign_key="workbench.id")
+    agent: str
+    role: str  # 'Assessor', 'Reviewer', 'Team Lead', 'Viewer'
+    assigned_at: datetime = Field(default_factory=datetime.utcnow)
+    assigned_by: Optional[str] = None
+    is_active: bool = Field(default=True)
