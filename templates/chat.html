@@ -1001,9 +1001,9 @@ Built with modern web technologies for optimal performance.`,
             
             // Set a timeout to detect connection issues
             const connectionTimeout = setTimeout(() => {
-                console.log('WebSocket connection timeout - enabling fallback mode');
+                console.log('WebSocket connection timeout (3s) - enabling fallback mode');
                 enableFallbackMode();
-            }, 5000);
+            }, 3000);
             
             socket.onopen = function(event) {
                 clearTimeout(connectionTimeout);
@@ -1787,16 +1787,26 @@ Here's what you can do:
             console.log('🌐 Cloud deployment detected - enabling fallback mode immediately');
             setTimeout(() => enableFallbackMode(), 100);
         } else {
+            console.log('🏠 Local development detected - attempting WebSocket with aggressive fallback');
             // Connect on page load for local development
             connect();
             
-            // Also try fallback mode quickly if connection issues
+            // Aggressive fallback - enable interface quickly regardless of WebSocket status
             setTimeout(() => {
                 if (!socket || socket.readyState !== WebSocket.OPEN) {
-                    console.log('WebSocket not ready after 1 second, enabling fallback mode');
+                    console.log('WebSocket not ready after 1 second, enabling fallback mode for local dev');
                     enableFallbackMode();
                 }
             }, 1000);
+            
+            // Backup fallback in case the first one fails
+            setTimeout(() => {
+                const messageInput = document.getElementById('messageInput');
+                if (messageInput && messageInput.disabled) {
+                    console.log('🚨 Emergency fallback - force enabling interface');
+                    enableFallbackMode();
+                }
+            }, 3000);
         }
     </script>
 </body>
