@@ -217,6 +217,7 @@ class ConnectionManager:
         prompts = [
             # Getting Started
             {"category": "🚀 Getting Started", "prompt": "help", "description": "Show all available commands"},
+            {"category": "🚀 Getting Started", "prompt": "how many agents are there ?", "description": "Count total agents in the system (question style)"},
             {"category": "🚀 Getting Started", "prompt": "show list of all agents", "description": "List all agents in the system (natural language)"},
             {"category": "🚀 Getting Started", "prompt": "show list of all workbenches", "description": "Show all workbenches with descriptions (natural language)"},
             {"category": "🚀 Getting Started", "prompt": "agents", "description": "List all agents (short command)"},
@@ -231,8 +232,10 @@ class ConnectionManager:
             {"category": "✨ Create New Items", "prompt": "create-task 6002 Chitra 1", "description": "Create task 6002 assigned to Chitra in Dispute workbench"},
             
             # Agent Management
+            {"category": "👥 Agent Management", "prompt": "details about abhijit", "description": "Get detailed information about abhijit (question style)"},
             {"category": "👥 Agent Management", "prompt": "show agent roles abhijit", "description": "Show all roles for abhijit (natural language)"},
             {"category": "👥 Agent Management", "prompt": "agent-roles Chitra", "description": "Show all roles for Chitra (short command)"},
+            {"category": "👥 Agent Management", "prompt": "info about ashish", "description": "Get information about ashish (natural language)"},
             {"category": "👥 Agent Management", "prompt": "roles for ashish", "description": "Show roles for ashish (natural language)"},
             
             # Workbench Operations
@@ -252,6 +255,13 @@ class ConnectionManager:
             {"category": "⚡ Quick Setup", "prompt": "create-workbench Marketing \"Marketing campaign management\"", "description": "Create Marketing workbench"},
             {"category": "⚡ Quick Setup", "prompt": "assign-role ProjectManager 1 Team Lead", "description": "Make ProjectManager a team lead"},
             {"category": "⚡ Quick Setup", "prompt": "create-task 7001 ProjectManager 1", "description": "Create task for ProjectManager in Dispute"},
+            
+            # Question Style Commands
+            {"category": "❓ Question Style", "prompt": "how many workbenches are there ?", "description": "Count total workbenches (question style)"},
+            {"category": "❓ Question Style", "prompt": "what agents exist ?", "description": "List all agents (question style)"},
+            {"category": "❓ Question Style", "prompt": "who are the agents ?", "description": "Show all agents (question style)"},
+            {"category": "❓ Question Style", "prompt": "tell me about Chitra", "description": "Get details about Chitra (conversational)"},
+            {"category": "❓ Question Style", "prompt": "what workbenches exist ?", "description": "List all workbenches (question style)"},
             
             # Analytics & Reports
             {"category": "📊 Analytics & Reports", "prompt": "coverage", "description": "Show role coverage across all workbenches"},
@@ -360,9 +370,20 @@ class ConnectionManager:
             elif action == "agents":
                 if self.mcp_client:
                     result = self.mcp_client.list_agents()
+                    # Check if this was a count question
+                    if any(phrase in command_lower for phrase in ['how many', 'count', 'number of', 'total']):
+                        agent_count = len(result.get('agents', []))
+                        result['count_query'] = True
+                        result['message'] = f"There are {agent_count} agents in the system"
                     return {"type": "agents", "data": result}
                 else:
-                    return self.get_demo_data("agents")
+                    demo_result = self.get_demo_data("agents")
+                    # Handle count questions for demo data too
+                    if any(phrase in command_lower for phrase in ['how many', 'count', 'number of', 'total']):
+                        agent_count = len(demo_result.get('data', {}).get('agents', []))
+                        demo_result['data']['count_query'] = True
+                        demo_result['data']['message'] = f"There are {agent_count} agents in the system"
+                    return demo_result
             
             elif action == "workbenches":
                 if self.role_manager:
@@ -414,14 +435,34 @@ class ConnectionManager:
             elif action == "agent-roles":
                 agent = self.extract_agent_name(original_command, parts)
                 if not agent:
-                    return {"error": "Please specify agent name. Example: agent-roles abhijit"}
+                    return {"error": "Please specify agent name. Example: agent-roles abhijit or details about abhijit"}
                 
                 if self.role_manager:
                     try:
                         roles = self.role_manager.get_agent_workbench_roles(agent)
-                        return {"type": "agent_roles", "agent": agent, "data": roles}
+                        
+                        # Check if this was a details request
+                        is_details_request = any(phrase in command_lower for phrase in ['details about', 'info about', 'information about', 'tell me about'])
+                        
+                        # Get additional agent information
+                        agent_details = {
+                            "agent": agent,
+                            "roles": roles,
+                            "is_details_request": is_details_request
+                        }
+                        
+                        # Add task information if MCP client is available
+                        if self.mcp_client and is_details_request:
+                            try:
+                                task_count = self.mcp_client.get_agent_task_count(agent, days=7)
+                                agent_details["task_count"] = task_count
+                                agent_details["recent_tasks"] = self.mcp_client.list_recent_tasks(agent, limit=3)
+                            except:
+                                pass  # Continue without task info if not available
+                        
+                        return {"type": "agent_roles", "agent": agent, "data": agent_details}
                     except Exception as e:
-                        return {"error": f"Could not get agent roles: {e}"}
+                        return {"error": f"Could not get agent information: {e}"}
                 else:
                     return {"error": "Workbench role manager not available"}
             
@@ -498,8 +539,24 @@ class ConnectionManager:
 
     def normalize_command(self, command_lower: str, parts: List[str]) -> str:
         """Normalize natural language commands to standard actions"""
+        # Handle question-style commands
+        if any(phrase in command_lower for phrase in ['how many agents', 'count agents', 'number of agents', 'total agents']):
+            return "agents"
+        elif any(phrase in command_lower for phrase in ['how many workbenches', 'count workbenches', 'number of workbenches', 'total workbenches']):
+            return "workbenches"
+        elif any(phrase in command_lower for phrase in ['details about', 'info about', 'information about', 'tell me about']):
+            # Extract the subject of the details request
+            if any(agent_indicator in command_lower for agent_indicator in ['agent', 'user']):
+                return "agent-roles"  # Show agent details via roles
+            else:
+                return "agent-roles"  # Default to agent details
+        elif any(phrase in command_lower for phrase in ['what agents', 'which agents', 'who are the agents']):
+            return "agents"
+        elif any(phrase in command_lower for phrase in ['what workbenches', 'which workbenches', 'what are the workbenches']):
+            return "workbenches"
+        
         # Handle natural language patterns
-        if any(phrase in command_lower for phrase in ['show list of all workbenches', 'list all workbenches', 'show workbenches', 'list workbenches']):
+        elif any(phrase in command_lower for phrase in ['show list of all workbenches', 'list all workbenches', 'show workbenches', 'list workbenches']):
             return "workbenches"
         elif any(phrase in command_lower for phrase in ['show list of all agents', 'list all agents', 'show agents', 'list agents']):
             return "agents"
@@ -519,7 +576,7 @@ class ConnectionManager:
             return "assign-role"
         
         # Handle standard commands
-        action = parts[0].lower()
+        action = parts[0].lower() if parts else ""
         
         # Command aliases
         aliases = {
@@ -528,7 +585,16 @@ class ConnectionManager:
             'display': 'workbenches',
             'view': 'workbenches',
             'get': 'agents',
-            'fetch': 'agents'
+            'fetch': 'agents',
+            'details': 'agent-roles',  # Handle 'details' as agent info
+            'info': 'agent-roles',     # Handle 'info' as agent info
+            'about': 'agent-roles',    # Handle 'about' as agent info
+            'how': 'agents',           # Default 'how' questions to agents
+            'what': 'agents',          # Default 'what' questions to agents
+            'which': 'agents',         # Default 'which' questions to agents
+            'who': 'agents',           # Default 'who' questions to agents
+            'count': 'agents',         # Default 'count' to agents
+            'total': 'agents'          # Default 'total' to agents
         }
         
         return aliases.get(action, action)
@@ -625,6 +691,21 @@ class ConnectionManager:
                 if word.lower() == 'for' and i + 1 < len(words):
                     return words[i + 1]
         
+        # Handle "details about" style commands
+        if any(phrase in command.lower() for phrase in ['details about', 'info about', 'information about', 'tell me about']):
+            words = command.split()
+            for i, word in enumerate(words):
+                if word.lower() in ['about'] and i + 1 < len(words):
+                    return words[i + 1]
+        
+        # Handle question style commands
+        if any(phrase in command.lower() for phrase in ['about', 'details', 'info']):
+            words = command.split()
+            # Look for agent names after keywords
+            for i, word in enumerate(words):
+                if word.lower() in ['about', 'details', 'info'] and i + 1 < len(words):
+                    return words[i + 1]
+        
         # Handle standard format
         if len(parts) > 1:
             return parts[1]
@@ -689,21 +770,42 @@ class ConnectionManager:
         """Suggest alternative commands for common mistakes"""
         suggestions = []
         
+        # Handle question-style suggestions
+        if 'how many' in command_lower:
+            if 'agent' in command_lower:
+                suggestions.append("'how many agents are there ?'")
+            elif 'workbench' in command_lower:
+                suggestions.append("'how many workbenches are there ?'")
+        
+        if 'details' in command_lower or 'info' in command_lower:
+            suggestions.append("'details about abhijit'")
+            suggestions.append("'info about Chitra'")
+        
         if 'show' in command_lower or 'list' in command_lower:
             if 'workbench' in command_lower:
-                suggestions.append("'workbenches' or 'list workbenches'")
+                suggestions.append("'workbenches' or 'show list of all workbenches'")
             elif 'agent' in command_lower:
-                suggestions.append("'agents' or 'list agents'")
+                suggestions.append("'agents' or 'show list of all agents'")
             elif 'role' in command_lower:
                 suggestions.append("'roles 1' or 'show roles 1'")
         
+        if 'what' in command_lower or 'who' in command_lower:
+            if 'agent' in command_lower:
+                suggestions.append("'what agents exist ?' or 'who are the agents ?'")
+            elif 'workbench' in command_lower:
+                suggestions.append("'what workbenches exist ?'")
+        
         if 'create' in command_lower:
             if 'agent' in command_lower:
-                suggestions.append("'create-agent NewAgent'")
+                suggestions.append("'create-agent NewAgent' or 'create agent NewAgent'")
             elif 'workbench' in command_lower:
                 suggestions.append("'create-workbench Support \"Description\"'")
             elif 'task' in command_lower:
                 suggestions.append("'create-task 6001'")
+        
+        if 'tell me' in command_lower:
+            suggestions.append("'tell me about abhijit'")
+            suggestions.append("'details about Chitra'")
         
         return ", ".join(suggestions[:3])  # Limit to 3 suggestions
 
@@ -1442,7 +1544,15 @@ chat_html_template = '''
             
             if (result.type === 'agents') {
                 const agents = result.data.agents || [];
-                return `<strong>👥 Agents (${agents.length}):</strong><br>${agents.join(', ')}`;
+                let html = '';
+                
+                // Handle count queries specially
+                if (result.data.count_query && result.data.message) {
+                    html += `<strong>📊 ${result.data.message}</strong><br><br>`;
+                }
+                
+                html += `<strong>👥 Agents (${agents.length}):</strong><br>${agents.join(', ')}`;
+                return html;
             }
             
             if (result.type === 'workbenches') {
@@ -1470,8 +1580,31 @@ chat_html_template = '''
             }
             
             if (result.type === 'agent_roles') {
-                const roles = result.data;
-                let html = `<strong>🎭 Roles for ${result.agent}:</strong><div class="workbench-list">`;
+                const agentData = result.data;
+                const roles = agentData.roles || agentData; // Handle both old and new format
+                
+                let html = '';
+                
+                // Check if this is a details request
+                if (agentData.is_details_request) {
+                    html += `<strong>📋 Agent Details: ${result.agent}</strong><br><br>`;
+                    
+                    // Add task information if available
+                    if (agentData.task_count) {
+                        html += `<strong>📊 Task Statistics:</strong><br>`;
+                        html += `<div class="workbench-item">Recent task count: ${JSON.stringify(agentData.task_count)}</div>`;
+                    }
+                    
+                    if (agentData.recent_tasks) {
+                        html += `<strong>📋 Recent Tasks:</strong><br>`;
+                        html += `<div class="workbench-item">${agentData.recent_tasks.length} recent tasks</div>`;
+                    }
+                    
+                    html += `<br><strong>🎭 Role Assignments:</strong><div class="workbench-list">`;
+                } else {
+                    html += `<strong>🎭 Roles for ${result.agent}:</strong><div class="workbench-list">`;
+                }
+                
                 if (roles.length === 0) {
                     html += '<div class="role-assignment">No roles assigned</div>';
                 } else {
