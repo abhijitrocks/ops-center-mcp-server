@@ -495,9 +495,19 @@ class ConnectionManager:
             
             elif action == "greeting":
                 return {
-                    "type": "conversational",
-                    "message": f"👋 Hello! Welcome to the MCP Chat Interface. I'm here to help you manage agents, workbenches, and tasks. What would you like to do today?",
-                    "suggestions": ["help", "agents", "workbenches", "coverage"]
+                    "type": "welcome",
+                    "message": """Welcome to OPS Center Chat! 🎉
+
+I'm your Operations Assistant—ready to help you manage agents, workbenches, and workflows with simple commands.
+
+Here's what you can do:
+• Ask "help" to see all commands
+• Type "agents" to list agents
+• Create workflows with create workflow for "<name>"
+• Assign tasks, view stats, and more—all in plain English
+
+💡 Tip: Try "how many tasks has Agent A completed in the last 3 days?" to get started.""",
+                    "suggestions": ["help", "agents", "workbenches", "coverage", "create workflow for \"Customer Support\""]
                 }
             
             elif action == "thanks":
@@ -881,6 +891,8 @@ class ConnectionManager:
             return "create-agent"
         elif any(phrase in command_lower for phrase in ['create workbench', 'new workbench', 'add workbench']):
             return "create-workbench"
+        elif any(phrase in command_lower for phrase in ['create workflow', 'new workflow', 'add workflow', 'workflow for']):
+            return "create-workbench"  # Workflows are essentially workbenches in our system
         elif any(phrase in command_lower for phrase in ['create task', 'new task', 'add task']):
             return "create-task"
         elif any(phrase in command_lower for phrase in ['assign role', 'give role', 'set role']):
@@ -938,15 +950,16 @@ class ConnectionManager:
         import re
         
         # Handle natural language
-        if 'create workbench' in command.lower() or 'new workbench' in command.lower():
-            # Extract after "workbench"
-            match = re.search(r'workbench\s+(\w+)(?:\s+"([^"]*)")?', command, re.IGNORECASE)
+        if any(phrase in command.lower() for phrase in ['create workbench', 'new workbench', 'create workflow', 'new workflow', 'workflow for']):
+            # Extract after "workbench" or "workflow"
+            match = re.search(r'(?:workbench|workflow)\s+(?:for\s+)?(?:"([^"]+)"|(\w+))(?:\s+"([^"]*)")?', command, re.IGNORECASE)
             if match:
-                workbench_name = match.group(1)
+                workbench_name = match.group(1) or match.group(2)
                 # Validate workbench name - reject common words/articles
-                if workbench_name.lower() in ['a', 'an', 'the', 'new', 'some', 'this', 'that']:
+                if workbench_name and workbench_name.lower() in ['a', 'an', 'the', 'new', 'some', 'this', 'that']:
                     return "", ""  # Invalid name, will trigger error asking for proper name
-                return workbench_name, match.group(2) or ""
+                description = match.group(3) or ""
+                return workbench_name or "", description
         
         # Handle standard format
         if len(parts) > 1:
@@ -2220,6 +2233,39 @@ Built with modern web technologies for optimal performance.`,
             
             socket.onopen = function(event) {
                 updateConnectionStatus(true);
+                
+                // Load suggested prompts
+                fetch('/api/prompts')
+                    .then(response => response.json())
+                    .then(data => {
+                        suggestedPrompts = data.prompts;
+                        displaySuggestedPrompts(data.prompts);
+                    })
+                    .catch(error => console.log('Could not load prompts:', error));
+                
+                // Show welcome message after a brief delay
+                setTimeout(() => {
+                    displayMessage({
+                        type: 'response',
+                        command: 'Welcome',
+                        result: {
+                            type: 'welcome',
+                            message: `Welcome to OPS Center Chat! 🎉
+
+I'm your Operations Assistant—ready to help you manage agents, workbenches, and workflows with simple commands.
+
+Here's what you can do:
+• Ask "help" to see all commands
+• Type "agents" to list agents
+• Create workflows with create workflow for "<name>"
+• Assign tasks, view stats, and more—all in plain English
+
+💡 Tip: Try "how many tasks has Agent A completed in the last 3 days?" to get started.`,
+                            suggestions: ["help", "agents", "workbenches", "coverage", "create workflow for \"Customer Support\""]
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                }, 1000);
             };
             
             socket.onmessage = function(event) {
@@ -2684,6 +2730,49 @@ Built with modern web technologies for optimal performance.`,
             
             if (result.type === 'llm_clear') {
                 return `<div style="color: #48bb78; font-weight: bold;">🧹 ${result.message}</div>`;
+            }
+            
+            if (result.type === 'welcome') {
+                let html = `<div style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    color: white; 
+                    padding: 24px; 
+                    border-radius: 16px; 
+                    margin: 16px 0; 
+                    box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+                    border: 1px solid rgba(255, 255, 255, 0.2);
+                ">
+                    <div style="font-size: 18px; font-weight: 600; margin-bottom: 16px; text-align: center;">
+                        🎉 Welcome to OPS Center Chat!
+                    </div>
+                    <div style="line-height: 1.6; white-space: pre-line;">
+                        ${result.message.replace('Welcome to OPS Center Chat! 🎉\n\n', '')}
+                    </div>
+                </div>`;
+                
+                if (result.suggestions && result.suggestions.length > 0) {
+                    html += '<div style="margin-top: 16px; text-align: center;"><strong>🚀 Quick Start Actions:</strong><br>';
+                    result.suggestions.forEach(suggestion => {
+                        html += `<button onclick="selectPrompt('${suggestion}')" style="
+                            background: var(--primary-600); 
+                            color: white; 
+                            border: none; 
+                            padding: 8px 16px; 
+                            margin: 6px; 
+                            border-radius: 20px; 
+                            cursor: pointer; 
+                            font-size: 13px;
+                            font-weight: 500;
+                            transition: all 0.2s ease;
+                            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                        " onmouseover="this.style.background='var(--primary-700)'; this.style.transform='translateY(-2px)'" 
+                           onmouseout="this.style.background='var(--primary-600)'; this.style.transform='translateY(0)'">
+                            ${suggestion}
+                        </button>`;
+                    });
+                    html += '</div>';
+                }
+                return html;
             }
             
             if (result.type === 'conversational') {
