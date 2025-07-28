@@ -1,0 +1,16 @@
+nohup: ignoring input
+INFO:     Started server process [33310]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
+Warning: MCP Client not available. Running in demo mode.
+✅ LLM Integration: Ollama (Local) is ready!
+✅ LLM Integration: Ollama (Local) ready!
+🚀 Starting MCP Chat Interface...
+📱 Chat interface will be available at: http://0.0.0.0:8080
+🔗 Share this URL with others to give them access to the MCP system
+💡 Available commands: help, agents, workbenches, roles, assign-role, agent-roles, coverage
+🔧 MCP Client Available: False
+🔧 Workbench Manager Available: True
+🌐 Deployment: Local
+INFO:     127.0.0.1:50182 - "GET /api/health HTTP/1.1" 200 OK

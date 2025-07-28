@@ -32,6 +32,13 @@ except ImportError:
     WORKBENCH_MANAGER_AVAILABLE = False
     print("Warning: Workbench Role Manager not available.")
 
+try:
+    from llm_integration import create_llm_processor, test_llm_availability
+    LLM_INTEGRATION_AVAILABLE = True
+except ImportError:
+    LLM_INTEGRATION_AVAILABLE = False
+    print("Warning: LLM Integration not available.")
+
 # Environment variables
 PORT = int(os.getenv("PORT", 8080))
 HOST = os.getenv("HOST", "0.0.0.0")
@@ -62,6 +69,8 @@ class ConnectionManager:
         self.mcp_client = None
         self.role_manager = None
         self.last_command_context = {}  # Store context for follow-up commands
+        self.llm_processor = None
+        self.llm_enabled = False
         
         if MCP_AVAILABLE:
             try:
@@ -75,6 +84,18 @@ class ConnectionManager:
                 self.role_manager = WorkbenchRoleManager()
             except Exception as e:
                 print(f"Could not initialize workbench role manager: {e}")
+        
+        if LLM_INTEGRATION_AVAILABLE:
+            try:
+                self.llm_processor = create_llm_processor()
+                self.llm_enabled = self.llm_processor.provider is not None
+                if self.llm_enabled:
+                    print(f"✅ LLM Integration: {self.llm_processor.client_config['name']} ready!")
+                else:
+                    print("⚠️  LLM Integration: No providers available")
+            except Exception as e:
+                print(f"Could not initialize LLM processor: {e}")
+                self.llm_enabled = False
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -364,6 +385,106 @@ class ConnectionManager:
             if not parts:
                 return {"error": "Empty command"}
             
+            # Check for conversational inputs first
+            conversational_actions = ["greeting", "thanks", "goodbye", "status"]
+            conversational_action = self.check_conversational_action(command_lower)
+            if conversational_action in conversational_actions:
+                return self.handle_conversational_action(conversational_action, original_command)
+            
+            # Try LLM processing first if available
+            if self.llm_enabled and self.llm_processor:
+                llm_result = self.llm_processor.process_with_llm(
+                    original_command, 
+                    {"last_command_context": self.last_command_context}
+                )
+                
+                if llm_result.get("success"):
+                    # LLM successfully processed the command
+                    commands = llm_result.get("commands", [])
+                    if commands:
+                        # Execute the first extracted command
+                        first_command = commands[0]
+                        result = await self._process_rule_based_command(first_command, user)
+                        
+                        # Add LLM response to the result
+                        if isinstance(result, dict):
+                            result["llm_response"] = llm_result["response"]
+                            result["llm_provider"] = llm_result["provider"]
+                            result["extracted_commands"] = commands
+                        
+                        return result
+                    else:
+                        # LLM responded but no commands extracted, return LLM response
+                        return {
+                            "type": "llm_response",
+                            "message": llm_result["response"],
+                            "provider": llm_result["provider"]
+                        }
+                elif llm_result.get("fallback_to_rules"):
+                    # LLM failed, continue to rule-based processing
+                    pass
+                else:
+                    # LLM error but no fallback requested
+                    return {"error": f"LLM processing failed: {llm_result.get('error', 'Unknown error')}"}
+            
+            # Rule-based processing (fallback or primary if no LLM)
+            return await self._process_rule_based_command(original_command, user)
+        
+        except Exception as e:
+            return {"error": f"Error processing command: {str(e)}"}
+    
+    def check_conversational_action(self, command_lower: str) -> str:
+        """Check if the command is a conversational greeting, thanks, etc."""
+        if any(phrase in command_lower for phrase in ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening']):
+            return "greeting"
+        elif any(phrase in command_lower for phrase in ['thanks', 'thank you', 'thx', 'appreciate', 'grateful']):
+            return "thanks"
+        elif any(phrase in command_lower for phrase in ['bye', 'goodbye', 'see you', 'farewell', 'exit', 'quit']):
+            return "goodbye"
+        elif any(phrase in command_lower for phrase in ['how are you', 'status', 'what\'s up', 'how is it going']):
+            return "status"
+        return "none"
+    
+    def handle_conversational_action(self, action: str, original_command: str) -> Dict[str, Any]:
+        """Handle conversational greetings and responses"""
+        if action == "greeting":
+            return {
+                "type": "conversational",
+                "message": "👋 Hello! Welcome to the MCP Chat Interface. I'm here to help you manage agents, workbenches, roles, and tasks.",
+                "suggestions": ["help", "agents", "workbenches", "coverage"]
+            }
+        elif action == "thanks":
+            return {
+                "type": "conversational", 
+                "message": "🙏 You're welcome! Happy to help with your MCP operations.",
+                "suggestions": ["help", "agents", "workbenches"]
+            }
+        elif action == "goodbye":
+            return {
+                "type": "conversational",
+                "message": "👋 Goodbye! Feel free to return anytime for MCP assistance.",
+                "suggestions": []
+            }
+        elif action == "status":
+            llm_status = "🤖 LLM: Available" if self.llm_enabled else "🤖 LLM: Not available (rule-based only)"
+            mcp_status = "🔗 MCP: Connected" if self.mcp_client else "🔗 MCP: Demo mode"
+            return {
+                "type": "conversational",
+                "message": f"🟢 MCP Chat Interface is running!\n{llm_status}\n{mcp_status}\nReady to assist with agent and workbench management.",
+                "suggestions": ["help", "agents", "workbenches", "coverage"]
+            }
+        return {"error": "Unknown conversational action"}
+    
+    async def _process_rule_based_command(self, command: str, user: str = "Anonymous") -> Dict[str, Any]:
+        """Process commands using rule-based logic"""
+        try:
+            # Parse command
+            original_command = command.strip()
+            command_lower = original_command.lower()
+            parts = original_command.strip().split()
+            if not parts:
+                return {"error": "Empty command"}
+            
             # Normalize command - handle natural language
             action = self.normalize_command(command_lower, parts)
             
@@ -372,8 +493,9 @@ class ConnectionManager:
                 return {
                     "type": "help",
                     "commands": [
-                        "💡 This is a rule-based command processor (not an LLM)",
+                        f"🤖 LLM: {self.llm_processor.client_config['name']} ({self.llm_processor.client_config['model']}) - ACTIVE" if self.llm_enabled else "🤖 LLM: Not available (rule-based only)",
                         "🔗 Supports contextual follow-up commands",
+                        "💬 Natural language processing enabled" if self.llm_enabled else "📝 Rule-based command processing",
                         "",
                         "help - Show available commands",
                         "agents / list agents / show agents - List all agents",
@@ -396,6 +518,9 @@ class ConnectionManager:
                         "their roles - Show all agent roles"
                     ]
                 }
+                
+                # Add LLM commands if enabled (would modify the above return later)
+                # For now, keeping the basic structure working
             
             elif action == "prompts" or action == "suggestions":
                 prompts = self.get_suggested_prompts()
@@ -616,6 +741,35 @@ class ConnectionManager:
                 else:
                     return {"error": "MCP client not available", "demo": True}
             
+            elif action == "llm-status":
+                if self.llm_processor:
+                    status = self.llm_processor.get_llm_status()
+                    return {"type": "llm_status", "data": status}
+                else:
+                    return {"error": "LLM integration not available"}
+            
+            elif action == "llm-toggle":
+                if self.llm_processor:
+                    self.llm_enabled = not self.llm_enabled
+                    status = "enabled" if self.llm_enabled else "disabled"
+                    return {
+                        "type": "llm_toggle",
+                        "message": f"🤖 LLM processing {status}",
+                        "enabled": self.llm_enabled
+                    }
+                else:
+                    return {"error": "LLM integration not available"}
+            
+            elif action == "llm-clear":
+                if self.llm_processor:
+                    self.llm_processor.conversation_history = []
+                    return {
+                        "type": "llm_clear",
+                        "message": "🧹 LLM conversation history cleared"
+                    }
+                else:
+                    return {"error": "LLM integration not available"}
+            
             else:
                 # Suggest alternatives for common mistakes
                 suggestions = self.suggest_command_alternatives(command_lower)
@@ -672,6 +826,14 @@ class ConnectionManager:
             return "create-task"
         elif any(phrase in command_lower for phrase in ['assign role', 'give role', 'set role']):
             return "assign-role"
+        
+        # Handle LLM commands
+        elif any(phrase in command_lower for phrase in ['llm status', 'llm-status', 'ai status']):
+            return "llm-status"
+        elif any(phrase in command_lower for phrase in ['llm toggle', 'llm-toggle', 'toggle llm', 'ai toggle']):
+            return "llm-toggle"
+        elif any(phrase in command_lower for phrase in ['llm clear', 'llm-clear', 'clear llm', 'clear history']):
+            return "llm-clear"
         
         # Handle standard commands
         action = parts[0].lower() if parts else ""
