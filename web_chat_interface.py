@@ -40,13 +40,6 @@ except ImportError:
     LLM_INTEGRATION_AVAILABLE = False
     print("🔶 LLM Integration not available in cloud. Using rule-based processing with natural language support.")
 
-try:
-    from llm_integration import create_llm_processor, test_llm_availability
-    LLM_INTEGRATION_AVAILABLE = True
-except ImportError:
-    LLM_INTEGRATION_AVAILABLE = False
-    print("Warning: LLM Integration not available.")
-
 # Environment variables
 PORT = int(os.getenv("PORT", 8080))
 HOST = os.getenv("HOST", "0.0.0.0")
