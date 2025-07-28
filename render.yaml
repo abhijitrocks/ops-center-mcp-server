@@ -6,11 +6,11 @@ services:
     region: oregon
     plan: free
     branch: main
-    buildCommand: pip install -r requirements.txt
-    startCommand: python3 web_chat_interface.py
+    buildCommand: pip install --no-cache-dir -r requirements.txt
+    startCommand: python render_start.py
     envVars:
-      - key: PORT
-        value: 8080
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: RENDER
+        value: "true"
     healthCheckPath: /api/health
