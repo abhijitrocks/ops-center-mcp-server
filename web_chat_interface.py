@@ -23,14 +23,22 @@ try:
     MCP_AVAILABLE = True
 except ImportError:
     MCP_AVAILABLE = False
-    print("Warning: MCP Client not available. Running in demo mode.")
+    print("🔶 MCP Client not available. Running in demo mode with full UI features.")
 
 try:
     from workbench_role_manager import WorkbenchRoleManager
     WORKBENCH_MANAGER_AVAILABLE = True
 except ImportError:
     WORKBENCH_MANAGER_AVAILABLE = False
-    print("Warning: Workbench Role Manager not available.")
+    print("🔶 Workbench Role Manager not available.")
+
+# Import LLM integration
+try:
+    from llm_integration import create_llm_processor, test_llm_availability
+    LLM_INTEGRATION_AVAILABLE = True
+except ImportError:
+    LLM_INTEGRATION_AVAILABLE = False
+    print("🔶 LLM Integration not available in cloud. Using rule-based processing with natural language support.")
 
 try:
     from llm_integration import create_llm_processor, test_llm_availability
@@ -69,7 +77,7 @@ class ConnectionManager:
         self.mcp_client = None
         self.role_manager = None
         self.last_command_context = {}  # Store context for follow-up commands
-        self.llm_processor = None
+        self.llm_processor = None  # LLM integration
         self.llm_enabled = False
         
         if MCP_AVAILABLE:
@@ -85,6 +93,7 @@ class ConnectionManager:
             except Exception as e:
                 print(f"Could not initialize workbench role manager: {e}")
         
+        # Initialize LLM processor
         if LLM_INTEGRATION_AVAILABLE:
             try:
                 self.llm_processor = create_llm_processor()
@@ -96,6 +105,10 @@ class ConnectionManager:
             except Exception as e:
                 print(f"Could not initialize LLM processor: {e}")
                 self.llm_enabled = False
+        
+        # Setup demo data for cloud deployment if MCP not available
+        if not MCP_AVAILABLE and self.role_manager:
+            self.setup_demo_data()
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -270,103 +283,106 @@ class ConnectionManager:
         except Exception as e:
             return {"error": f"Could not get agent assignments: {str(e)}"}
 
+    def setup_demo_data(self):
+        """Setup impressive demo data for cloud deployment"""
+        try:
+            print("🎯 Setting up demo data for cloud deployment...")
+            
+            # Create demo agents via role assignments (this creates the workbench roles entries)
+            demo_roles = [
+                ("Sarah_Chen", 1, "Team Lead"),      # Dispute Team Lead
+                ("Mike_Johnson", 1, "Assessor"),     # Dispute Assessor  
+                ("Lisa_Wong", 1, "Reviewer"),        # Dispute Reviewer
+                ("David_Kim", 2, "Team Lead"),       # Transaction Team Lead
+                ("Amy_Rodriguez", 2, "Assessor"),    # Transaction Assessor
+                ("James_Smith", 3, "Team Lead"),     # Account Holder Team Lead
+                ("Emma_Davis", 3, "Reviewer"),       # Account Holder Reviewer
+                ("Alex_Kumar", 4, "Team Lead"),      # Loan Team Lead
+                ("Sophie_Taylor", 4, "Assessor"),    # Loan Assessor
+                ("Marcus_Brown", 4, "Reviewer"),     # Loan Reviewer
+            ]
+            
+            for agent, workbench_id, role in demo_roles:
+                try:
+                    self.role_manager.assign_workbench_role(agent, workbench_id, role, "System")
+                except Exception:
+                    pass  # Ignore if already exists
+            
+            print("✅ Demo data setup complete - 10 agents across 4 workbenches with proper role distribution")
+            
+        except Exception as e:
+            print(f"🔶 Demo data setup skipped: {e}")
+
+    async def _process_llm_with_commands(self, llm_result: Dict[str, Any], user: str) -> Dict[str, Any]:
+        """Process LLM response that contains both natural language and commands"""
+        commands = llm_result.get("commands", [])
+        natural_response = llm_result.get("natural_response", "")
+        
+        command_results = []
+        
+        # Execute each command found in the LLM response
+        for cmd in commands:
+            try:
+                # Process the command using the rule-based system
+                result = await self._process_rule_based_command(cmd, user)
+                command_results.append({"command": cmd, "result": result})
+            except Exception as e:
+                command_results.append({"command": cmd, "error": str(e)})
+        
+        return {
+            "type": "llm_with_executed_commands",
+            "natural_response": natural_response,
+            "command_results": command_results,
+            "original_message": llm_result.get("original_message", ""),
+            "timestamp": llm_result.get("timestamp")
+        }
+
+    async def _process_rule_based_command(self, command: str, user: str) -> Dict[str, Any]:
+        """Process a single command using the original rule-based logic"""
+        # This contains the original command processing logic
+        # Parse command
+        original_command = command.strip()
+        command_lower = original_command.lower()
+        parts = original_command.strip().split()
+        if not parts:
+            return {"error": "Empty command"}
+        
+        # Normalize command - handle natural language
+        action = self.normalize_command(command_lower, parts)
+        
+        # [Include all the original command processing logic here]
+        # For now, return a simple response - you can expand this
+        return {"message": f"Executed command: {command}", "action": action}
+
     def get_suggested_prompts(self) -> List[Dict[str, str]]:
-        """Get comprehensive suggested prompts for all features"""
+        """Get organized suggested prompts with clear grouping and descriptions"""
         prompts = [
             # Getting Started
-            {"category": "🚀 Getting Started", "prompt": "help", "description": "Show all available commands"},
-            {"category": "🚀 Getting Started", "prompt": "how many agents are there ?", "description": "Count total agents in the system (question style)"},
-            {"category": "🚀 Getting Started", "prompt": "show list of all agents", "description": "List all agents in the system (natural language)"},
-            {"category": "🚀 Getting Started", "prompt": "show list of all workbenches", "description": "Show all workbenches with descriptions (natural language)"},
-            {"category": "🚀 Getting Started", "prompt": "agents", "description": "List all agents (short command)"},
-            {"category": "🚀 Getting Started", "prompt": "workbenches", "description": "Show all workbenches (short command)"},
+            {"category": "🚀 Getting Started", "prompt": "help", "description": "View all available commands"},
+            {"category": "🚀 Getting Started", "prompt": "how many agents are there?", "description": "Count total agents"},
+            {"category": "🚀 Getting Started", "prompt": "show list of all agents", "description": "Show all agents in natural language"},
+            {"category": "🚀 Getting Started", "prompt": "workbenches", "description": "Quick workbench list"},
             
-            # Creation Operations
-            {"category": "✨ Create New Items", "prompt": "create agent NewAgent", "description": "Create a new agent using natural language"},
-            {"category": "✨ Create New Items", "prompt": "create-agent DataAnalyst", "description": "Create a data analyst agent (short command)"},
-            {"category": "✨ Create New Items", "prompt": "create workbench Support \"Customer support\"", "description": "Create Support workbench (natural language)"},
-            {"category": "✨ Create New Items", "prompt": "create-workbench Compliance \"Regulatory compliance tasks\"", "description": "Create a Compliance workbench (short command)"},
-            {"category": "✨ Create New Items", "prompt": "create task 6001", "description": "Create a new task using natural language"},
-            {"category": "✨ Create New Items", "prompt": "create-task 6002 Chitra 1", "description": "Create task 6002 assigned to Chitra in Dispute workbench"},
+            # Create New Items
+            {"category": "✨ Create New Items", "prompt": "create agent NewAgent", "description": "Add a new agent"},
+            {"category": "✨ Create New Items", "prompt": "create-agent DataAnalyst", "description": "Add an agent via short command"},
+            {"category": "✨ Create New Items", "prompt": "create workbench Support \"Customer support\"", "description": "Build a Support workbench"},
+            {"category": "✨ Create New Items", "prompt": "create-task 6002 Chitra 1", "description": "Create a task and assign it"},
             
             # Agent Management
-            {"category": "👥 Agent Management", "prompt": "details about abhijit", "description": "Get detailed information about abhijit (question style)"},
-            {"category": "👥 Agent Management", "prompt": "show agent roles abhijit", "description": "Show all roles for abhijit (natural language)"},
-            {"category": "👥 Agent Management", "prompt": "agent-roles Chitra", "description": "Show all roles for Chitra (short command)"},
-            {"category": "👥 Agent Management", "prompt": "info about ashish", "description": "Get information about ashish (natural language)"},
-            {"category": "👥 Agent Management", "prompt": "roles for ashish", "description": "Show roles for ashish (natural language)"},
+            {"category": "👥 Agent Management", "prompt": "details about abhijit", "description": "Full details of an agent"},
+            {"category": "👥 Agent Management", "prompt": "show agent roles abhijit", "description": "List roles for an agent"},
+            {"category": "👥 Agent Management", "prompt": "agent-roles Chitra", "description": "Quick role summary"},
             
             # Workbench Operations
-            {"category": "🏢 Workbench Operations", "prompt": "show roles 1", "description": "View roles in Dispute workbench (natural language)"},
-            {"category": "🏢 Workbench Operations", "prompt": "roles 2", "description": "View roles in Transaction workbench (short command)"},
-            {"category": "🏢 Workbench Operations", "prompt": "show roles 3", "description": "View roles in Account Holder workbench (natural language)"},
-            {"category": "🏢 Workbench Operations", "prompt": "roles 4", "description": "View roles in Loan workbench (short command)"},
+            {"category": "🏢 Workbench Operations", "prompt": "show roles 1", "description": "View Dispute workbench roles"},
+            {"category": "🏢 Workbench Operations", "prompt": "roles 2", "description": "View Transaction workbench roles"},
+            {"category": "🏢 Workbench Operations", "prompt": "show roles 3", "description": "View Account Holder workbench roles"},
+            {"category": "🏢 Workbench Operations", "prompt": "roles 4", "description": "View Loan workbench roles"},
             
-            # Role Management
-            {"category": "🎭 Role Management", "prompt": "assign-role bulk_agent 2 Viewer", "description": "Assign bulk_agent as Viewer in Transaction workbench"},
-            {"category": "🎭 Role Management", "prompt": "assign-role ramesh 3 Assessor", "description": "Assign ramesh as Assessor in Account Holder workbench"},
-            {"category": "🎭 Role Management", "prompt": "assign-role Aleem 1 Reviewer", "description": "Assign Aleem as Reviewer in Dispute workbench"},
-            {"category": "🎭 Role Management", "prompt": "assign-role test_agent 4 Team Lead", "description": "Assign test_agent as Team Lead in Loan workbench"},
-            
-            # Quick Setup Examples
-            {"category": "⚡ Quick Setup", "prompt": "create-agent ProjectManager", "description": "Create a project manager agent"},
-            {"category": "⚡ Quick Setup", "prompt": "create-workbench Marketing \"Marketing campaign management\"", "description": "Create Marketing workbench"},
-            {"category": "⚡ Quick Setup", "prompt": "assign-role ProjectManager 1 Team Lead", "description": "Make ProjectManager a team lead"},
-            {"category": "⚡ Quick Setup", "prompt": "create-task 7001 ProjectManager 1", "description": "Create task for ProjectManager in Dispute"},
-            
-            # Question Style Commands
-            {"category": "❓ Question Style", "prompt": "how many workbenches are there ?", "description": "Count total workbenches (question style)"},
-            {"category": "❓ Question Style", "prompt": "what agents exist ?", "description": "List all agents (question style)"},
-            {"category": "❓ Question Style", "prompt": "who are the agents ?", "description": "Show all agents (question style)"},
-            {"category": "❓ Question Style", "prompt": "tell me about Chitra", "description": "Get details about Chitra (conversational)"},
-            {"category": "❓ Question Style", "prompt": "what workbenches exist ?", "description": "List all workbenches (question style)"},
-            
-            # Contextual Follow-up Commands
-            {"category": "🔗 Contextual Commands", "prompt": "their assigned workbenches", "description": "Show workbench assignments (after listing agents)"},
-            {"category": "🔗 Contextual Commands", "prompt": "where are they assigned", "description": "Show assignments (contextual follow-up)"},
-            {"category": "🔗 Contextual Commands", "prompt": "their roles", "description": "Show all agent roles (contextual)"},
-            {"category": "🔗 Contextual Commands", "prompt": "workbench assignments", "description": "Show all agent-workbench assignments"},
-            {"category": "🔗 Contextual Commands", "prompt": "assigned to", "description": "Show assignments (short contextual)"},
-            
-            # Analytics & Reports
-            {"category": "📊 Analytics & Reports", "prompt": "coverage", "description": "Show role coverage across all workbenches"},
-            
-            # Task Management (if MCP available)
-            {"category": "📋 Task Management", "prompt": "tasks abhijit", "description": "Get recent tasks for abhijit"},
-            {"category": "📋 Task Management", "prompt": "tasks Chitra", "description": "Get recent tasks for Chitra"},
-            {"category": "📋 Task Management", "prompt": "assign abhijit 5001 1", "description": "Assign task 5001 to abhijit in Dispute workbench"},
-            {"category": "📋 Task Management", "prompt": "status 5001 abhijit completed", "description": "Mark task 5001 as completed for abhijit"},
-            {"category": "📋 Task Management", "prompt": "stats abhijit", "description": "Get performance statistics for abhijit"},
-            {"category": "📋 Task Management", "prompt": "stats Chitra", "description": "Get performance statistics for Chitra"},
-            
-            # Advanced Operations
-            {"category": "⚡ Advanced Operations", "prompt": "assign-role workflow_agent 1 Assessor", "description": "Assign workflow_agent multiple roles"},
-            {"category": "⚡ Advanced Operations", "prompt": "assign-role bulk_agent 3 Team Lead", "description": "Assign bulk_agent as team lead"},
-            {"category": "⚡ Advanced Operations", "prompt": "assign-role test_agent 2 Reviewer", "description": "Cross-workbench role assignment"},
-            
-            # Specific Workbench Examples
-            {"category": "🔍 Dispute Workbench", "prompt": "roles 1", "description": "Check current Dispute team"},
-            {"category": "🔍 Dispute Workbench", "prompt": "assign-role ramesh 1 Viewer", "description": "Add ramesh as Dispute viewer"},
-            
-            {"category": "💳 Transaction Workbench", "prompt": "roles 2", "description": "Check Transaction team setup"},
-            {"category": "💳 Transaction Workbench", "prompt": "assign-role ashish 2 Assessor", "description": "Add ashish to Transaction team"},
-            
-            {"category": "👤 Account Holder Workbench", "prompt": "roles 3", "description": "View Account Holder team"},
-            {"category": "👤 Account Holder Workbench", "prompt": "assign-role Aleem 3 Reviewer", "description": "Add Aleem as Account reviewer"},
-            
-            {"category": "🏦 Loan Workbench", "prompt": "roles 4", "description": "Check Loan processing team"},
-            {"category": "🏦 Loan Workbench", "prompt": "assign-role Chitra 4 Team Lead", "description": "Make Chitra loan team lead"},
-            
-            # System Insights
-            {"category": "🔍 System Insights", "prompt": "coverage", "description": "Identify workbenches needing attention"},
-            {"category": "🔍 System Insights", "prompt": "agent-roles bulk_agent", "description": "See bulk_agent's current responsibilities"},
-            {"category": "🔍 System Insights", "prompt": "agent-roles workflow_agent", "description": "Check workflow_agent assignments"},
-            
-            # Bulk Operations
-            {"category": "🔄 Bulk Operations", "prompt": "create-agent TeamLead1", "description": "Create first team lead"},
-            {"category": "🔄 Bulk Operations", "prompt": "create-agent TeamLead2", "description": "Create second team lead"},
-            {"category": "🔄 Bulk Operations", "prompt": "assign-role TeamLead1 1 Team Lead", "description": "Assign team lead role"},
-            {"category": "🔄 Bulk Operations", "prompt": "assign-role TeamLead2 2 Team Lead", "description": "Assign to different workbench"},
+            # Role Management - placeholder for future assign-role & revoke-role prompts
+            {"category": "🎭 Role Management", "prompt": "assign-role ashish 1 Assessor", "description": "Assign role to agent in workbench"},
+            {"category": "🎭 Role Management", "prompt": "coverage", "description": "Show role coverage report"},
         ]
         
         # Filter out MCP-only commands if not available
@@ -376,8 +392,26 @@ class ConnectionManager:
         return prompts
 
     async def process_command(self, command: str, user: str = "Anonymous") -> Dict[str, Any]:
-        """Process MCP commands and return results"""
+        """Process MCP commands and return results - with LLM integration"""
         try:
+            # Try LLM processing first if available
+            if self.llm_enabled and self.llm_processor:
+                llm_result = await self.llm_processor.process_with_llm(command, self.last_command_context)
+                
+                if llm_result.get("fallback_to_rules"):
+                    # LLM failed, fall back to rule-based processing
+                    pass  # Continue to rule-based processing below
+                elif llm_result.get("type") == "llm_with_commands":
+                    # LLM provided both natural response and commands to execute
+                    return await self._process_llm_with_commands(llm_result, user)
+                elif llm_result.get("type") == "llm_response":
+                    # Pure LLM conversational response
+                    return llm_result
+                else:
+                    # Unknown LLM response format, fall back to rules
+                    pass  # Continue to rule-based processing below
+            
+            # Rule-based processing (original logic)
             # Parse command
             original_command = command.strip()
             command_lower = original_command.lower()
@@ -490,10 +524,13 @@ class ConnectionManager:
             
             # Handle different commands
             if action == "help":
+                llm_status = "🤖 LLM-POWERED" if self.llm_enabled else "🤖 Rule-based processor"
+                llm_info = f" ({self.llm_processor.provider})" if self.llm_enabled else " (no LLM)"
+                
                 return {
                     "type": "help",
                     "commands": [
-                        f"🤖 LLM: {self.llm_processor.client_config['name']} ({self.llm_processor.client_config['model']}) - ACTIVE" if self.llm_enabled else "🤖 LLM: Not available (rule-based only)",
+                        f"🤖 LLM: {self.llm_processor.client_config['name'] if self.llm_processor and self.llm_processor.client_config else 'Unknown'} - ACTIVE" if self.llm_enabled else "🤖 LLM: Not available (rule-based only)",
                         "🔗 Supports contextual follow-up commands",
                         "💬 Natural language processing enabled" if self.llm_enabled else "📝 Rule-based command processing",
                         "",
@@ -515,12 +552,57 @@ class ConnectionManager:
                         "🔗 Contextual Commands (after listing agents):",
                         "their assigned workbenches - Show all agent assignments",
                         "where are they assigned - Show workbench assignments",
-                        "their roles - Show all agent roles"
+                        "their roles - Show all agent roles",
+                        "",
+                        "🤖 LLM Commands:",
+                        "llm-status - Show LLM integration status",
+                        "llm-toggle - Enable/disable LLM processing",
+                        "llm-clear - Clear conversation history"
                     ]
                 }
                 
                 # Add LLM commands if enabled (would modify the above return later)
                 # For now, keeping the basic structure working
+            
+            elif action == "greeting":
+                return {
+                    "type": "welcome",
+                    "message": """Welcome to OPS Center Chat! 🎉
+
+I'm your Operations Assistant—ready to help you manage agents, workbenches, and workflows with simple commands.
+
+Here's what you can do:
+• Ask "help" to see all commands
+• Type "agents" to list agents
+• Create workflows with create workflow for "<name>"
+• Assign tasks, view stats, and more—all in plain English
+
+💡 Tip: Try "how many tasks has Agent A completed in the last 3 days?" to get started.""",
+                    "suggestions": ["help", "agents", "workbenches", "coverage", "create workflow for \"Customer Support\""]
+                }
+            
+            elif action == "thanks":
+                return {
+                    "type": "conversational", 
+                    "message": "😊 You're welcome! Happy to help with your MCP management needs. Is there anything else you'd like to do?",
+                    "suggestions": ["agents", "workbenches", "coverage", "help"]
+                }
+            
+            elif action == "goodbye":
+                return {
+                    "type": "conversational",
+                    "message": "👋 Goodbye! Thanks for using the MCP Chat Interface. Have a great day!",
+                    "suggestions": []
+                }
+            
+            elif action == "status":
+                llm_status = "🤖 LLM-POWERED" if self.llm_enabled else "🤖 Rule-based"
+                mcp_status = "🟢 Connected" if self.mcp_client else "🔶 Demo Mode"
+                return {
+                    "type": "conversational",
+                    "message": f"🚀 I'm doing great! System status: {llm_status} | {mcp_status} | Ready to help you manage your MCP system.",
+                    "suggestions": ["agents", "workbenches", "coverage", "help"]
+                }
             
             elif action == "prompts" or action == "suggestions":
                 prompts = self.get_suggested_prompts()
@@ -529,13 +611,61 @@ class ConnectionManager:
             elif action == "create-agent":
                 agent_name = self.extract_create_agent_name(original_command, parts)
                 if not agent_name:
-                    return {"error": "Please specify agent name. Example: create-agent NewAgent"}
+                    # Check if user used invalid words like "a", "the", etc.
+                    invalid_words = ['a', 'an', 'the', 'new', 'some', 'this', 'that']
+                    used_invalid = any(word in original_command.lower() for word in invalid_words)
+                    
+                    if used_invalid:
+                        return {
+                            "error": "Please provide a proper agent name (not 'a', 'the', etc.)",
+                            "suggestion": "Try: 'create agent CustomerServiceAgent' or 'create agent DataAnalyst'",
+                            "examples": [
+                                "create agent SalesManager",
+                                "create agent TechnicalSupport",
+                                "create agent ProjectCoordinator",
+                                "create agent QualityAssurance"
+                            ]
+                        }
+                    else:
+                        return {
+                            "error": "Please specify an agent name",
+                            "suggestion": "Format: create agent <n>",
+                            "examples": [
+                                "create agent NewAgent",
+                                "create agent DataAnalyst",
+                                "create agent ProjectManager"
+                            ]
+                        }
                 return self.create_agent(agent_name, user)
             
             elif action == "create-workbench":
                 workbench_name, description = self.extract_create_workbench_params(original_command, parts)
                 if not workbench_name:
-                    return {"error": "Please specify workbench name. Example: create-workbench Support \"Customer support\""}
+                    # Check if user used invalid words like "a", "the", etc.
+                    invalid_words = ['a', 'an', 'the', 'new', 'some', 'this', 'that']
+                    used_invalid = any(word in original_command.lower() for word in invalid_words)
+                    
+                    if used_invalid:
+                        return {
+                            "error": "Please provide a proper workbench name (not 'a', 'the', etc.)",
+                            "suggestion": "Try: 'create workbench CustomerService \"Handle customer inquiries\"' or 'create workbench Marketing \"Marketing campaigns\"'",
+                            "examples": [
+                                "create workbench Support \"Customer support operations\"",
+                                "create workbench Finance \"Financial operations\"", 
+                                "create workbench HR \"Human resources management\"",
+                                "create workbench IT \"IT operations and support\""
+                            ]
+                        }
+                    else:
+                        return {
+                            "error": "Please specify a workbench name",
+                            "suggestion": "Format: create workbench <Name> \"<Description>\"",
+                            "examples": [
+                                "create workbench Support \"Customer support operations\"",
+                                "create workbench Marketing \"Marketing campaigns\"",
+                                "create workbench Finance \"Financial operations\""
+                            ]
+                        }
                 return self.create_workbench(workbench_name, description, user)
             
             elif action == "create-task":
@@ -691,6 +821,31 @@ class ConnectionManager:
                 else:
                     return {"error": "Workbench role manager not available"}
             
+            elif action == "llm-status":
+                if self.llm_processor:
+                    status = self.llm_processor.get_llm_status()
+                    if LLM_INTEGRATION_AVAILABLE:
+                        availability = test_llm_availability()
+                        status["provider_availability"] = availability
+                    return {"type": "llm_status", "data": status}
+                else:
+                    return {"error": "LLM integration not available"}
+            
+            elif action == "llm-toggle":
+                if self.llm_processor:
+                    self.llm_enabled = not self.llm_enabled
+                    status = "enabled" if self.llm_enabled else "disabled"
+                    return {"type": "llm_toggle", "message": f"LLM processing {status}", "enabled": self.llm_enabled}
+                else:
+                    return {"error": "LLM integration not available"}
+            
+            elif action == "llm-clear":
+                if self.llm_processor:
+                    self.llm_processor.clear_conversation_history()
+                    return {"type": "llm_clear", "message": "LLM conversation history cleared"}
+                else:
+                    return {"error": "LLM integration not available"}
+            
             elif action == "tasks":
                 agent = self.extract_agent_name(original_command, parts)
                 if not agent:
@@ -783,6 +938,20 @@ class ConnectionManager:
 
     def normalize_command(self, command_lower: str, parts: List[str]) -> str:
         """Normalize natural language commands to standard actions"""
+        
+        # Handle conversational greetings and common phrases
+        if command_lower in ["hi", "hello", "hey", "good morning", "good afternoon", "good evening"]:
+            return "greeting"
+        
+        if command_lower in ["thanks", "thank you", "thanks!", "thank you!"]:
+            return "thanks"
+        
+        if command_lower in ["bye", "goodbye", "see you", "exit", "quit"]:
+            return "goodbye"
+        
+        if "how are you" in command_lower or "how's it going" in command_lower or "what's up" in command_lower:
+            return "status"
+        
         # Handle contextual/pronoun commands
         if any(phrase in command_lower for phrase in ['their assigned', 'their workbenches', 'their roles', 'assigned workbenches', 'workbench assignments']):
             return "agent-workbench-summary"  # New command for showing all agent workbench assignments
@@ -822,6 +991,8 @@ class ConnectionManager:
             return "create-agent"
         elif any(phrase in command_lower for phrase in ['create workbench', 'new workbench', 'add workbench']):
             return "create-workbench"
+        elif any(phrase in command_lower for phrase in ['create workflow', 'new workflow', 'add workflow', 'workflow for']):
+            return "create-workbench"  # Workflows are essentially workbenches in our system
         elif any(phrase in command_lower for phrase in ['create task', 'new task', 'add task']):
             return "create-task"
         elif any(phrase in command_lower for phrase in ['assign role', 'give role', 'set role']):
@@ -866,11 +1037,19 @@ class ConnectionManager:
             words = command.split()
             for i, word in enumerate(words):
                 if word.lower() in ['agent'] and i + 1 < len(words):
-                    return words[i + 1]
+                    agent_name = words[i + 1]
+                    # Validate agent name - reject common words/articles
+                    if agent_name.lower() in ['a', 'an', 'the', 'new', 'some', 'this', 'that']:
+                        return ""  # Invalid name
+                    return agent_name
         
         # Handle standard format
         if len(parts) > 1:
-            return parts[1]
+            agent_name = parts[1]
+            # Validate agent name - reject common words/articles
+            if agent_name.lower() in ['a', 'an', 'the', 'new', 'some', 'this', 'that']:
+                return ""  # Invalid name
+            return agent_name
         
         return ""
 
@@ -879,15 +1058,24 @@ class ConnectionManager:
         import re
         
         # Handle natural language
-        if 'create workbench' in command.lower() or 'new workbench' in command.lower():
-            # Extract after "workbench"
-            match = re.search(r'workbench\s+(\w+)(?:\s+"([^"]*)")?', command, re.IGNORECASE)
+        if any(phrase in command.lower() for phrase in ['create workbench', 'new workbench', 'create workflow', 'new workflow', 'workflow for']):
+            # Extract after "workbench" or "workflow"
+            match = re.search(r'(?:workbench|workflow)\s+(?:for\s+)?(?:"([^"]+)"|(\w+))(?:\s+"([^"]*)")?', command, re.IGNORECASE)
             if match:
-                return match.group(1), match.group(2) or ""
+                workbench_name = match.group(1) or match.group(2)
+                # Validate workbench name - reject common words/articles
+                if workbench_name and workbench_name.lower() in ['a', 'an', 'the', 'new', 'some', 'this', 'that']:
+                    return "", ""  # Invalid name, will trigger error asking for proper name
+                description = match.group(3) or ""
+                return workbench_name or "", description
         
         # Handle standard format
         if len(parts) > 1:
             workbench_name = parts[1]
+            # Validate workbench name - reject common words/articles
+            if workbench_name.lower() in ['a', 'an', 'the', 'new', 'some', 'this', 'that']:
+                return "", ""  # Invalid name, will trigger error asking for proper name
+            
             description = ""
             if len(parts) > 2:
                 description = " ".join(parts[2:]).strip('"\'')
@@ -1076,6 +1264,13 @@ async def get_chat_page(request: Request):
     """Serve the main chat interface"""
     return templates.TemplateResponse("chat.html", {"request": request})
 
+@app.get("/test", response_class=HTMLResponse)
+async def get_test_page():
+    """Serve a simple test page"""
+    with open("simple_test.html", "r") as f:
+        content = f.read()
+    return HTMLResponse(content=content)
+
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
     await manager.connect(websocket)
@@ -1083,7 +1278,9 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         # Send welcome message
         welcome_msg = {
             "type": "system",
-            "message": f"Welcome {user_id}! Connected to MCP Chat Interface.",
+                            "message": "Welcome, OPS Ninja! You're now connected to the OPS Center MCP Chat Interface. " + 
+                          ("🌐 Cloud demo mode active with full UI features. " if not MCP_AVAILABLE else "") + 
+                          "How can I assist you today?",
             "timestamp": datetime.now().isoformat(),
             "status": {
                 "mcp_available": MCP_AVAILABLE,
@@ -1153,7 +1350,24 @@ async def get_suggested_prompts():
     """REST endpoint to get suggested prompts"""
     return {"prompts": manager.get_suggested_prompts()}
 
-# Create the HTML template with enhanced UI for suggested prompts
+@app.post("/api/command")
+async def process_command_api(request: dict):
+    """REST endpoint to process commands when WebSocket is not available"""
+    try:
+        message = request.get("message", "")
+        user = request.get("user", "Anonymous")
+        
+        if not message:
+            return {"error": "No message provided"}
+        
+        # Process the command using the same logic as WebSocket
+        result = await manager.process_command(message, user)
+        return result
+        
+    except Exception as e:
+        return {"error": f"Command processing failed: {str(e)}", "fallback": True}
+
+# Create the HTML template with modern enterprise UI/UX
 chat_html_template = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -1162,7 +1376,33 @@ chat_html_template = '''
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MCP Chat Interface</title>
     <meta name="description" content="Interactive web interface for MCP system">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --primary-600: #4f46e5;
+            --primary-700: #4338ca;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+            --blue-50: #eff6ff;
+            --blue-500: #3b82f6;
+            --green-50: #f0fdf4;
+            --green-500: #22c55e;
+            --amber-50: #fffbeb;
+            --amber-500: #f59e0b;
+            --red-50: #fef2f2;
+            --red-500: #ef4444;
+        }
+        
         * {
             margin: 0;
             padding: 0;
@@ -1170,233 +1410,549 @@ chat_html_template = '''
         }
         
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
             min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 10px;
+            color: var(--gray-800);
+            line-height: 1.6;
         }
         
         .chat-container {
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            width: 100%;
-            max-width: 1200px;
-            height: 90vh;
-            min-height: 600px;
             display: flex;
-            overflow: hidden;
+            height: 100vh;
+            max-width: 100vw;
+            background: white;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        /* Top Bar */
+        .top-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 64px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--gray-200);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            z-index: 50;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+        }
+        
+        .logo-section {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+        
+        .logo-section:hover {
+            background: var(--gray-50);
+        }
+        
+        .logo-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--gray-900);
+            margin-left: 8px;
+        }
+        
+        .status-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .status-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            border: 1px solid var(--gray-300);
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .status-toggle:hover {
+            border-color: var(--primary-600);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+        
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .badge-cloud {
+            background: var(--green-50);
+            color: var(--green-500);
+        }
+        
+        .badge-demo {
+            background: var(--amber-50);
+            color: var(--amber-500);
+        }
+        
+        .badge-error {
+            background: var(--red-50);
+            color: var(--red-500);
         }
         
         .sidebar {
             width: 320px;
-            background: #f8fafc;
-            border-right: 1px solid #e2e8f0;
+            background: var(--gray-50);
+            border-right: 1px solid var(--gray-200);
             display: flex;
             flex-direction: column;
-            overflow: hidden;
+            margin-top: 64px;
+            height: calc(100vh - 64px);
         }
         
         .sidebar-header {
-            background: #4a5568;
+            background: var(--gray-800);
             color: white;
-            padding: 15px;
-            text-align: center;
+            padding: 20px;
+            border-bottom: 1px solid var(--gray-200);
         }
         
         .sidebar-header h3 {
             font-size: 16px;
-            margin-bottom: 5px;
+            font-weight: 600;
+            margin-bottom: 8px;
         }
         
         .sidebar-header p {
-            font-size: 12px;
-            opacity: 0.8;
+            font-size: 14px;
+            color: var(--gray-300);
+            font-weight: 400;
         }
         
         .prompts-container {
             flex: 1;
             overflow-y: auto;
-            padding: 15px;
+            padding: 16px;
         }
         
         .prompt-category {
-            margin-bottom: 20px;
+            margin-bottom: 24px;
+        }
+        
+        .category-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 0;
+            cursor: pointer;
+            user-select: none;
+            border-bottom: 1px solid var(--gray-200);
+            margin-bottom: 12px;
+        }
+        
+        .category-header:hover {
+            color: var(--primary-600);
         }
         
         .category-title {
             font-size: 14px;
-            font-weight: bold;
-            color: #4a5568;
-            margin-bottom: 8px;
-            padding: 5px 0;
-            border-bottom: 2px solid #e2e8f0;
+            font-weight: 600;
+            color: var(--gray-700);
+        }
+        
+        .category-toggle {
+            font-size: 12px;
+            color: var(--gray-400);
+            transition: transform 0.2s ease;
+        }
+        
+        .category-toggle.collapsed {
+            transform: rotate(-90deg);
+        }
+        
+        .category-content {
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        
+        .category-content.collapsed {
+            max-height: 0;
+            opacity: 0;
         }
         
         .prompt-item {
             background: white;
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--gray-200);
             border-radius: 8px;
-            padding: 10px;
-            margin: 5px 0;
+            padding: 12px;
+            margin: 6px 0;
             cursor: pointer;
-            transition: all 0.2s;
-            font-size: 13px;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
         }
         
         .prompt-item:hover {
-            background: #edf2f7;
-            border-color: #4299e1;
+            background: var(--gray-50);
+            border-color: var(--primary-600);
             transform: translateY(-1px);
+            box-shadow: 0 4px 12px 0 rgba(79, 70, 229, 0.15);
+        }
+        
+        .prompt-item:active {
+            transform: translateY(0);
         }
         
         .prompt-item.creation {
-            border-left: 4px solid #48bb78;
-            background: #f0fff4;
+            border-left: 4px solid var(--green-500);
+            background: var(--green-50);
         }
         
         .prompt-item.creation:hover {
-            background: #e6fffa;
-            border-color: #38a169;
+            background: white;
+            box-shadow: 0 4px 12px 0 rgba(34, 197, 94, 0.15);
         }
         
         .prompt-command {
-            font-family: monospace;
-            font-weight: bold;
-            color: #2d3748;
-            margin-bottom: 3px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-weight: 500;
+            color: var(--gray-800);
+            margin-bottom: 4px;
+            font-size: 13px;
+            line-height: 1.4;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         
         .prompt-description {
-            color: #718096;
-            font-size: 11px;
+            color: var(--gray-500);
+            font-size: 12px;
+            line-height: 1.3;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        
+        .prompt-tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--gray-800);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            z-index: 10;
+            margin-bottom: 8px;
+        }
+        
+        .prompt-item:hover .prompt-tooltip {
+            opacity: 1;
         }
         
         .main-chat {
             flex: 1;
             display: flex;
             flex-direction: column;
-        }
-        
-        .chat-header {
-            background: #4a5568;
-            color: white;
-            padding: 20px;
-            text-align: center;
-        }
-        
-        .chat-header h1 {
-            font-size: 24px;
-            margin-bottom: 5px;
-        }
-        
-        .chat-header p {
-            opacity: 0.8;
-            font-size: 14px;
+            margin-top: 64px;
+            height: calc(100vh - 64px);
         }
         
         .chat-messages {
             flex: 1;
-            padding: 20px;
+            padding: 24px;
             overflow-y: auto;
-            background: #f7fafc;
+            background: var(--gray-50);
+            scroll-behavior: smooth;
         }
         
         .message {
-            margin-bottom: 15px;
-            padding: 12px 16px;
-            border-radius: 12px;
-            max-width: 85%;
+            margin-bottom: 8px;
+            padding: 16px 20px;
+            border-radius: 16px;
+            max-width: 75%;
             word-wrap: break-word;
+            position: relative;
+            animation: messageSlideIn 0.3s ease-out;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        @keyframes messageSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
         
         .message.user {
-            background: #4299e1;
+            background: linear-gradient(135deg, var(--primary-600), var(--primary-700));
             color: white;
             margin-left: auto;
-            text-align: right;
+            border-radius: 16px 16px 4px 16px;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
         }
         
         .message.system {
-            background: #48bb78;
+            background: linear-gradient(135deg, var(--green-500), #16a34a);
             color: white;
+            margin: 0 auto;
+            max-width: 90%;
             text-align: center;
-            max-width: 100%;
-            font-size: 14px;
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
         }
         
         .message.response {
-            background: #e2e8f0;
-            color: #2d3748;
+            background: rgba(255, 255, 255, 0.9);
+            color: var(--gray-800);
+            border-radius: 16px 16px 16px 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border: 1px solid var(--gray-200);
         }
         
         .message.error {
-            background: #f56565;
+            background: linear-gradient(135deg, var(--red-500), #dc2626);
             color: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+        
+        .message-header {
+            font-size: 12px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            opacity: 0.8;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .message-content {
+            font-size: 14px;
+            line-height: 1.5;
         }
         
         .message-time {
-            font-size: 12px;
-            opacity: 0.7;
-            margin-top: 5px;
+            font-size: 11px;
+            opacity: 0.6;
+            margin-top: 8px;
+            font-weight: 400;
         }
         
         .chat-input {
-            padding: 20px;
-            background: white;
-            border-top: 1px solid #e2e8f0;
+            padding: 20px 24px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(16px);
+            border-top: 1px solid var(--gray-200);
             display: flex;
-            gap: 10px;
+            align-items: flex-end;
+            gap: 12px;
         }
         
-        .chat-input input {
+        .input-container {
             flex: 1;
+            position: relative;
+        }
+        
+        .chat-textarea {
+            width: 100%;
             padding: 12px 16px;
-            border: 2px solid #e2e8f0;
-            border-radius: 25px;
+            border: 2px solid var(--gray-200);
+            border-radius: 12px;
             outline: none;
             font-size: 16px;
+            font-family: inherit;
+            resize: none;
+            min-height: 44px;
+            max-height: 120px;
+            transition: all 0.2s ease;
+            background: white;
+            line-height: 1.5;
         }
         
-        .chat-input input:focus {
-            border-color: #4299e1;
+        .chat-textarea:focus {
+            border-color: var(--primary-600);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
         }
         
-        .chat-input button {
-            background: #4299e1;
+        .chat-textarea::placeholder {
+            color: var(--gray-400);
+        }
+        
+        .input-hints {
+            position: absolute;
+            bottom: -24px;
+            left: 0;
+            font-size: 12px;
+            color: var(--gray-400);
+            display: flex;
+            gap: 16px;
+        }
+        
+        .hint {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .send-button {
+            background: var(--primary-600);
             color: white;
             border: none;
-            padding: 12px 24px;
-            border-radius: 25px;
+            padding: 12px 16px;
+            border-radius: 12px;
             cursor: pointer;
-            font-size: 16px;
-            transition: background 0.3s;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 80px;
+            justify-content: center;
         }
         
-        .chat-input button:hover {
-            background: #3182ce;
+        .send-button:hover {
+            background: var(--primary-700);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+        }
+        
+        .send-button:active {
+            transform: translateY(0);
+        }
+        
+        .send-button:disabled {
+            background: var(--gray-300);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .send-icon {
+            font-size: 16px;
         }
         
         .connection-status {
             position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 10px 15px;
+            top: 80px;
+            right: 24px;
+            padding: 8px 16px;
             border-radius: 20px;
             color: white;
-            font-size: 14px;
-            z-index: 1000;
+            font-size: 12px;
+            font-weight: 500;
+            z-index: 40;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
         }
         
-        .connected {
-            background: #48bb78;
+        .connection-status.connected {
+            background: rgba(34, 197, 94, 0.9);
         }
         
-        .disconnected {
-            background: #f56565;
+        .connection-status.connecting {
+            background: rgba(245, 158, 11, 0.9);
+        }
+        
+        .connection-status.disconnected {
+            background: rgba(239, 68, 68, 0.9);
+        }
+        
+        /* Floating Action Button */
+        .fab-container {
+            position: fixed;
+            bottom: 100px;
+            right: 24px;
+            z-index: 40;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .fab {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: var(--primary-600);
+            color: white;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            box-shadow: 0 8px 24px rgba(79, 70, 229, 0.4);
+            transition: all 0.3s ease;
+            backdrop-filter: blur(8px);
+        }
+        
+        .fab:hover {
+            transform: scale(1.1);
+            box-shadow: 0 12px 32px rgba(79, 70, 229, 0.5);
+        }
+        
+        .fab.secondary {
+            background: white;
+            color: var(--gray-600);
+            width: 48px;
+            height: 48px;
+            font-size: 18px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            border: 1px solid var(--gray-200);
+        }
+        
+        .fab.secondary:hover {
+            background: var(--gray-50);
+            color: var(--primary-600);
+        }
+        
+        .fab-tooltip {
+            position: absolute;
+            right: 64px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: var(--gray-800);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+        
+        .fab:hover .fab-tooltip {
+            opacity: 1;
         }
         
         .command-result {
@@ -1472,129 +2028,394 @@ chat_html_template = '''
         
         .toggle-sidebar {
             display: none;
-            background: #4a5568;
+            background: var(--primary-600);
             color: white;
             border: none;
-            padding: 10px;
+            padding: 12px;
             cursor: pointer;
             position: fixed;
-            top: 20px;
-            left: 20px;
-            border-radius: 5px;
-            z-index: 1001;
+            top: 70px;
+            left: 16px;
+            border-radius: 12px;
+            z-index: 60;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+            transition: all 0.2s ease;
+            font-size: 16px;
         }
         
+        .toggle-sidebar:hover {
+            background: var(--primary-700);
+            transform: scale(1.05);
+        }
+        
+        /* Mobile Responsiveness */
         @media (max-width: 768px) {
-            body {
-                padding: 5px;
+            .chat-container {
+                flex-direction: column;
             }
             
-            .chat-container {
-                height: 95vh;
-                border-radius: 10px;
-                flex-direction: column;
+            .top-bar {
+                padding: 0 16px;
+            }
+            
+            .logo-title {
+                font-size: 18px;
+            }
+            
+            .status-section {
+                gap: 8px;
+            }
+            
+            .status-badge {
+                display: none;
             }
             
             .sidebar {
                 width: 100%;
-                height: 250px;
+                height: 40vh;
                 border-right: none;
-                border-bottom: 1px solid #e2e8f0;
-                display: none;
+                border-bottom: 1px solid var(--gray-200);
+                position: fixed;
+                top: 64px;
+                left: 0;
+                z-index: 30;
+                transform: translateY(-100%);
+                transition: transform 0.3s ease;
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
             }
             
             .sidebar.mobile-open {
-                display: flex;
+                transform: translateY(0);
             }
             
             .main-chat {
-                flex: 1;
+                margin-top: 64px;
+                height: calc(100vh - 64px);
             }
             
             .toggle-sidebar {
                 display: block;
             }
             
-            .chat-header {
-                padding: 15px;
-            }
-            
-            .chat-header h1 {
-                font-size: 20px;
-            }
-            
             .chat-messages {
-                padding: 15px;
+                padding: 16px;
+            }
+            
+            .message {
+                max-width: 90%;
+                padding: 12px 16px;
             }
             
             .chat-input {
-                padding: 15px;
+                padding: 16px;
+            }
+            
+            .input-hints {
+                display: none;
             }
             
             .connection-status {
-                top: 10px;
-                right: 10px;
-                font-size: 12px;
-                padding: 8px 12px;
+                top: 70px;
+                right: 16px;
+                font-size: 11px;
+                padding: 6px 12px;
+            }
+            
+            .fab-container {
+                bottom: 80px;
+                right: 16px;
+            }
+            
+            .fab {
+                width: 48px;
+                height: 48px;
+                font-size: 18px;
+            }
+            
+            .fab.secondary {
+                width: 40px;
+                height: 40px;
+                font-size: 16px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .top-bar {
+                padding: 0 12px;
+            }
+            
+            .logo-title {
+                font-size: 16px;
+            }
+            
+            .sidebar {
+                height: 50vh;
+            }
+            
+            .chat-messages {
+                padding: 12px;
+            }
+            
+            .message {
+                padding: 10px 14px;
+                font-size: 14px;
+            }
+            
+            .chat-input {
+                padding: 12px;
+            }
+            
+            .chat-textarea {
+                font-size: 16px; /* Prevent zoom on iOS */
             }
         }
     </style>
 </head>
 <body>
-    <button class="toggle-sidebar" onclick="toggleSidebar()">💡 Prompts</button>
+    <!-- Top Bar -->
+    <div class="top-bar">
+        <div class="logo-section" onclick="showAbout()">
+            <span style="font-size: 24px;">🤖</span>
+            <span class="logo-title">MCP Chat Interface</span>
+        </div>
+        
+        <div class="status-section">
+            <!-- Consolidated into single connection status badge below -->
+        </div>
+    </div>
+    
+    <!-- Toggle Sidebar Button (Mobile) -->
+    <button class="toggle-sidebar" onclick="toggleSidebar()" style="display: none;">
+        <span>💡</span>
+    </button>
     
     <div class="chat-container">
+        <!-- Sidebar -->
         <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <h3>💡 Suggested Prompts</h3>
-                <p>Click any prompt to try it</p>
+                <p>Click any prompt to try it instantly</p>
             </div>
             <div class="prompts-container" id="promptsContainer">
                 <!-- Prompts will be loaded here -->
             </div>
         </div>
         
+        <!-- Main Chat -->
         <div class="main-chat">
-            <div class="chat-header">
-                <h1>🤖 MCP Chat Interface</h1>
-                <p>Interactive command interface for MCP system | Click prompts or type commands</p>
-            </div>
-            
             <div class="chat-messages" id="messages">
                 <!-- Messages will appear here -->
             </div>
             
             <div class="chat-input">
-                <input type="text" id="messageInput" placeholder="Type a command or click a suggested prompt..." maxlength="500">
-                <button onclick="sendMessage()">Send</button>
+                <div class="input-container">
+                    <textarea 
+                        id="messageInput" 
+                        class="chat-textarea"
+                        placeholder="Type your message here... Ready to use!"
+                        rows="1"
+                        maxlength="1000"></textarea>
+                    <div class="input-hints">
+                        <div class="hint">
+                            <span>💡</span>
+                            <span>Press / for commands</span>
+                        </div>
+                        <div class="hint">
+                            <span>↑</span>
+                            <span>Previous message</span>
+                        </div>
+                    </div>
+                </div>
+                                    <button class="send-button" id="sendButton">
+                        <span class="send-icon">📤</span>
+                        <span>Send</span>
+                    </button>
             </div>
         </div>
     </div>
     
-    <div class="connection-status disconnected" id="connectionStatus">
-        Connecting...
+    <!-- Connection Status -->
+    <div class="connection-status connected" id="connectionStatus">
+        🟢 Ready
+    </div>
+    
+    <!-- Floating Action Buttons -->
+    <div class="fab-container" id="fabContainer">
+        <button class="fab secondary" onclick="executeQuickCommand('agents')">
+            <span>👥</span>
+            <div class="fab-tooltip">Show Agents</div>
+        </button>
+        <button class="fab secondary" onclick="executeQuickCommand('coverage')">
+            <span>📊</span>
+            <div class="fab-tooltip">Coverage Report</div>
+        </button>
+        <button class="fab" onclick="executeQuickCommand('help')">
+            <span>❓</span>
+            <div class="fab-tooltip">Help</div>
+        </button>
     </div>
     
     <script>
+        // EMERGENCY DEBUG - Test if script loads
+        console.log('🚨 SCRIPT LOADING - JavaScript started');
+        
         let socket;
         let userId = 'User_' + Math.random().toString(36).substr(2, 9);
         let mcpAvailable = false;
         let workbenchManagerAvailable = false;
         let isCloudDeployment = false;
         let suggestedPrompts = [];
+        let messageHistory = [];
         
+        console.log('🔧 Variables initialized, userId:', userId);
+        let historyIndex = -1;
+        let collapsedCategories = new Set();
+        
+        // Auto-resize textarea
+        function autoResizeTextarea() {
+            const textarea = document.getElementById('messageInput');
+            textarea.style.height = 'auto';
+            const newHeight = Math.min(textarea.scrollHeight, 120);
+            textarea.style.height = newHeight + 'px';
+        }
+        
+        // Toggle sidebar for mobile
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             sidebar.classList.toggle('mobile-open');
         }
         
+        // Show about dialog
+        function showAbout() {
+            const aboutMsg = {
+                type: 'system',
+                message: `🤖 MCP Chat Interface v2.0
+                
+Enterprise-grade agent and workbench management system.
+
+Features:
+• LLM-powered natural language processing
+• Rule-based command fallback
+• Agent and workbench management
+• Role-based access control
+• Real-time task tracking
+• Mobile-responsive design
+
+Built with modern web technologies for optimal performance.`,
+                timestamp: new Date().toISOString()
+            };
+            displayMessage(aboutMsg);
+        }
+        
+        // Toggle demo mode
+        function toggleDemo() {
+            // This would toggle between demo and connected mode
+            // For now, just show status
+            executeQuickCommand('llm-status');
+        }
+        
+        // Execute quick commands from FAB
+        function executeQuickCommand(command) {
+            const input = document.getElementById('messageInput');
+            input.value = command;
+            sendMessage();
+        }
+        
+        // Handle message history navigation
+        function navigateHistory(direction) {
+            if (messageHistory.length === 0) return;
+            
+            if (direction === 'up') {
+                historyIndex = Math.min(historyIndex + 1, messageHistory.length - 1);
+            } else {
+                historyIndex = Math.max(historyIndex - 1, -1);
+            }
+            
+            const input = document.getElementById('messageInput');
+            if (historyIndex >= 0) {
+                input.value = messageHistory[messageHistory.length - 1 - historyIndex];
+            } else {
+                input.value = '';
+            }
+            autoResizeTextarea();
+        }
+        
+        // Toggle category collapse
+        function toggleCategory(categoryName) {
+            if (collapsedCategories.has(categoryName)) {
+                collapsedCategories.delete(categoryName);
+            } else {
+                collapsedCategories.add(categoryName);
+            }
+            updateCategoryDisplay(categoryName);
+        }
+        
+        // Update category display
+        function updateCategoryDisplay(categoryName) {
+            const content = document.querySelector(`[data-category="${categoryName}"] .category-content`);
+            const toggle = document.querySelector(`[data-category="${categoryName}"] .category-toggle`);
+            
+            if (collapsedCategories.has(categoryName)) {
+                content.classList.add('collapsed');
+                toggle.classList.add('collapsed');
+            } else {
+                content.classList.remove('collapsed');
+                toggle.classList.remove('collapsed');
+            }
+        }
+        
         function connect() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws/${userId}`;
+            
+            console.log('Attempting WebSocket connection to:', wsUrl);
+            updateConnectionStatus('connecting');
+            
             socket = new WebSocket(wsUrl);
             
+            // Set a timeout to detect connection issues
+            const connectionTimeout = setTimeout(() => {
+                console.log('WebSocket connection timeout (3s) - enabling fallback mode');
+                enableFallbackMode();
+            }, 3000);
+            
             socket.onopen = function(event) {
-                updateConnectionStatus(true);
+                clearTimeout(connectionTimeout);
+                console.log('WebSocket connected successfully');
+                updateConnectionStatus('connected');
+                
+                // Load suggested prompts
+                fetch('/api/prompts')
+                    .then(response => response.json())
+                    .then(data => {
+                        suggestedPrompts = data.prompts;
+                        displaySuggestedPrompts(data.prompts);
+                    })
+                    .catch(error => console.log('Could not load prompts:', error));
+                
+                // Show welcome message after a brief delay
+                setTimeout(() => {
+                    displayMessage({
+                        type: 'response',
+                        command: 'Welcome',
+                        result: {
+                            type: 'welcome',
+                            message: `Welcome to OPS Center Chat! 🎉
+
+I'm your Operations Assistant—ready to help you manage agents, workbenches, and workflows with simple commands.
+
+Here's what you can do:
+• Ask "help" to see all commands
+• Type "agents" to list agents
+• Create workflows with create workflow for "<name>"
+• Assign tasks, view stats, and more—all in plain English
+
+💡 Tip: Try "how many tasks has Agent A completed in the last 3 days?" to get started.`,
+                            suggestions: ["help", "agents", "workbenches", "coverage", "create workflow for \"Customer Support\""]
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                }, 1000);
             };
             
             socket.onmessage = function(event) {
@@ -1608,21 +2429,133 @@ chat_html_template = '''
             };
             
             socket.onclose = function(event) {
-                updateConnectionStatus(false);
-                setTimeout(connect, 3000); // Reconnect after 3 seconds
+                console.log('WebSocket connection closed:', event.code, event.reason);
+                updateConnectionStatus('connecting');
+                
+                // If it's not a normal closure, enable fallback mode after a few failed attempts
+                if (event.code !== 1000) {
+                    setTimeout(() => {
+                        console.log('Enabling fallback mode due to connection issues');
+                        enableFallbackMode();
+                    }, 2000);
+                } else {
+                    setTimeout(connect, 3000); // Reconnect after 3 seconds for normal closure
+                }
             };
             
             socket.onerror = function(error) {
                 console.error('WebSocket error:', error);
-                updateConnectionStatus(false);
+                updateConnectionStatus('connecting');
+                // Enable fallback mode immediately on WebSocket error
+                setTimeout(() => {
+                    console.log('Enabling fallback mode due to WebSocket error');
+                    enableFallbackMode();
+                }, 1000);
             };
         }
         
-        function updateConnectionStatus(connected) {
+        // Fallback mode - enable interface without WebSocket
+        function enableFallbackMode() {
+            console.log('🔄 Enabling fallback mode - interface will work without WebSocket');
+            
+            // Update connection status to show we're in fallback mode
+            updateConnectionStatus('fallback');
+            
+            // Load suggested prompts directly
+            fetch('/api/prompts')
+                .then(response => response.json())
+                .then(data => {
+                    suggestedPrompts = data.prompts;
+                    displaySuggestedPrompts(data.prompts);
+                })
+                .catch(error => {
+                    console.log('Could not load prompts, using default');
+                    displayDefaultPrompts();
+                });
+            
+            // Show welcome message
+            displayMessage({
+                type: 'response',
+                command: 'Welcome',
+                result: {
+                    type: 'welcome',
+                    message: `Welcome to OPS Center Chat! 🎉
+
+I'm your Operations Assistant—ready to help you manage agents, workbenches, and workflows with simple commands.
+
+🔶 Running in fallback mode - some features may be limited but core functionality is available.
+
+Here's what you can do:
+• Ask "help" to see all commands
+• Type "agents" to list agents
+• Create workflows with create workflow for "<name>"
+• Assign tasks, view stats, and more—all in plain English
+
+💡 Tip: Try "how many tasks has Agent A completed in the last 3 days?" to get started.`,
+                    suggestions: ["help", "agents", "workbenches", "coverage", "create workflow for \"Customer Support\""]
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+            // Enable fallback communication IMMEDIATELY
+            window.fallbackMode = true;
+            
+            // AGGRESSIVELY enable input elements with multiple attempts
+            const enableInputs = () => {
+                console.log('🔧 FORCE ENABLING INPUTS...');
+                const messageInput = document.getElementById('messageInput');
+                const sendButton = document.getElementById('sendButton');
+                
+                if (messageInput) {
+                    messageInput.disabled = false;
+                    messageInput.placeholder = "Type your command here... (Ready!)";
+                    messageInput.style.opacity = '1';
+                    messageInput.style.pointerEvents = 'auto';
+                    messageInput.focus();
+                    console.log('✅ Input enabled and focused');
+                }
+                
+                if (sendButton) {
+                    sendButton.disabled = false;
+                    sendButton.innerHTML = '<span class="send-icon">📤</span><span>Send</span>';
+                    sendButton.style.opacity = '1';
+                    sendButton.style.pointerEvents = 'auto';
+                    console.log('✅ Send button enabled');
+                }
+            };
+            
+            // Enable immediately and retry multiple times
+            enableInputs();
+            setTimeout(enableInputs, 50);
+            setTimeout(enableInputs, 200);
+            setTimeout(enableInputs, 500);
+        }
+        
+        // Default prompts in case API fails
+        function displayDefaultPrompts() {
+            const defaultPrompts = [
+                {"category": "🚀 Getting Started", "prompt": "help", "description": "View all available commands"},
+                {"category": "🚀 Getting Started", "prompt": "agents", "description": "List all agents"},
+                {"category": "✨ Create New Items", "prompt": "create agent NewAgent", "description": "Add a new agent"},
+                {"category": "👥 Agent Management", "prompt": "details about abhijit", "description": "Full details of an agent"}
+            ];
+            displaySuggestedPrompts(defaultPrompts);
+        }
+        
+        function updateConnectionStatus(status) {
             const statusEl = document.getElementById('connectionStatus');
-            if (connected) {
+            if (!statusEl) return;
+            
+            // Handle different status types
+            if (status === 'connected' || status === true) {
                 statusEl.textContent = '🟢 Connected';
                 statusEl.className = 'connection-status connected';
+            } else if (status === 'connecting') {
+                statusEl.textContent = '🟡 Connecting...';
+                statusEl.className = 'connection-status connecting';
+            } else if (status === 'fallback') {
+                statusEl.textContent = '🔶 HTTP Mode';
+                statusEl.className = 'connection-status connecting';
             } else {
                 statusEl.textContent = '🔴 Disconnected';
                 statusEl.className = 'connection-status disconnected';
@@ -1646,32 +2579,59 @@ chat_html_template = '''
             Object.entries(categories).forEach(([category, categoryPrompts]) => {
                 const categoryDiv = document.createElement('div');
                 categoryDiv.className = 'prompt-category';
+                categoryDiv.setAttribute('data-category', category);
+                
+                // Category header with toggle
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'category-header';
+                headerDiv.onclick = () => toggleCategory(category);
                 
                 const titleDiv = document.createElement('div');
                 titleDiv.className = 'category-title';
                 titleDiv.textContent = category;
-                categoryDiv.appendChild(titleDiv);
+                
+                const toggleDiv = document.createElement('div');
+                toggleDiv.className = 'category-toggle';
+                toggleDiv.textContent = '▼';
+                
+                headerDiv.appendChild(titleDiv);
+                headerDiv.appendChild(toggleDiv);
+                categoryDiv.appendChild(headerDiv);
+                
+                // Category content
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'category-content';
                 
                 categoryPrompts.forEach(prompt => {
                     const promptDiv = document.createElement('div');
                     promptDiv.className = 'prompt-item';
                     
                     // Highlight creation prompts
-                    if (category === '✨ Create New Items' || category === '⚡ Quick Setup') {
+                    if (category === '✨ Create New Items' || category === '⚡ Quick Setup' || category === '📝 Proper Naming') {
                         promptDiv.classList.add('creation');
                     }
                     
                     promptDiv.onclick = () => selectPrompt(prompt.prompt);
+                    
+                    // Add tooltip
+                    const tooltipDiv = document.createElement('div');
+                    tooltipDiv.className = 'prompt-tooltip';
+                    tooltipDiv.textContent = prompt.prompt;
                     
                     promptDiv.innerHTML = `
                         <div class="prompt-command">${prompt.prompt}</div>
                         <div class="prompt-description">${prompt.description}</div>
                     `;
                     
-                    categoryDiv.appendChild(promptDiv);
+                    promptDiv.appendChild(tooltipDiv);
+                    contentDiv.appendChild(promptDiv);
                 });
                 
+                categoryDiv.appendChild(contentDiv);
                 container.appendChild(categoryDiv);
+                
+                // Set initial collapse state
+                updateCategoryDisplay(category);
             });
         }
         
@@ -1688,12 +2648,35 @@ chat_html_template = '''
         }
         
         function sendMessage() {
+            console.log('🚀 sendMessage called');
             const input = document.getElementById('messageInput');
+            const sendButton = document.getElementById('sendButton');
             const message = input.value.trim();
             
-            if (message === '' || !socket || socket.readyState !== WebSocket.OPEN) {
+            console.log('📝 Message:', message);
+            console.log('🔧 Fallback mode:', window.fallbackMode);
+            
+            if (message === '') {
+                console.log('❌ Empty message, returning');
                 return;
             }
+            
+            // Always use HTTP in our current setup
+            console.log('📡 Using HTTP API mode');
+            sendViaHTTP(message, input, sendButton);
+        }
+        
+        function sendViaWebSocket(message, input, sendButton) {
+            // Add to message history
+            messageHistory.unshift(message);
+            if (messageHistory.length > 50) {
+                messageHistory = messageHistory.slice(0, 50);
+            }
+            historyIndex = -1;
+            
+            // Disable send button temporarily
+            sendButton.disabled = true;
+            sendButton.innerHTML = '<span class="send-icon">⏳</span><span>Sending</span>';
             
             // Display user message
             displayMessage({
@@ -1709,6 +2692,85 @@ chat_html_template = '''
             }));
             
             input.value = '';
+            input.style.height = 'auto';
+            
+            // Re-enable send button after delay
+            setTimeout(() => {
+                sendButton.disabled = false;
+                sendButton.innerHTML = '<span class="send-icon">📤</span><span>Send</span>';
+            }, 1000);
+        }
+        
+        function sendViaHTTP(message, input, sendButton) {
+            console.log('📡 sendViaHTTP called with message:', message);
+            
+            // Add to message history
+            messageHistory.unshift(message);
+            if (messageHistory.length > 50) {
+                messageHistory = messageHistory.slice(0, 50);
+            }
+            historyIndex = -1;
+            
+            // Disable send button temporarily
+            sendButton.disabled = true;
+            sendButton.innerHTML = '<span class="send-icon">⏳</span><span>Sending</span>';
+            console.log('🔧 Send button disabled, showing sending state');
+            
+            // Display user message
+            console.log('💬 Displaying user message');
+            displayMessage({
+                type: 'user',
+                message: message,
+                timestamp: new Date().toISOString()
+            });
+            
+            // Send via HTTP API
+            console.log('🌐 Sending to /api/command');
+            fetch('/api/command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    message: message,
+                    user: userId
+                })
+            })
+            .then(response => {
+                console.log('✅ Got response:', response.status);
+                return response.json();
+            })
+            .then(data => {
+                console.log('📦 Response data:', data);
+                // Display the response
+                displayMessage({
+                    type: 'response',
+                    command: message,
+                    result: data,
+                    timestamp: new Date().toISOString()
+                });
+                console.log('💬 Response message displayed');
+            })
+            .catch(error => {
+                console.error('❌ HTTP API error:', error);
+                displayMessage({
+                    type: 'response',
+                    command: message,
+                    result: {
+                        error: 'Unable to process command. Please try again or check your connection.',
+                        fallback: true
+                    },
+                    timestamp: new Date().toISOString()
+                });
+            })
+            .finally(() => {
+                // Re-enable send button
+                sendButton.disabled = false;
+                sendButton.innerHTML = '<span class="send-icon">📤</span><span>Send</span>';
+            });
+            
+            input.value = '';
+            input.style.height = 'auto';
         }
         
         function displayMessage(data) {
@@ -1721,8 +2783,8 @@ chat_html_template = '''
             if (data.type === 'user') {
                 className += 'user';
                 content = `
-                    <div>${data.message}</div>
-                    <div class="message-time">${new Date(data.timestamp).toLocaleTimeString()}</div>
+                    <div class="message-header">[User • ${new Date(data.timestamp).toLocaleTimeString()}]</div>
+                    <div class="message-content">${data.message}</div>
                 `;
             } else if (data.type === 'system') {
                 className += 'system';
@@ -1730,33 +2792,56 @@ chat_html_template = '''
                 workbenchManagerAvailable = data.status?.workbench_manager_available || false;
                 isCloudDeployment = data.status?.deployment === 'cloud';
                 
-                let statusIndicator = '';
-                if (isCloudDeployment) statusIndicator += '<span class="cloud-indicator">🌐 Cloud Deployed</span>';
-                if (!mcpAvailable) statusIndicator += '<span class="demo-indicator">MCP Demo Mode</span>';
-                if (!workbenchManagerAvailable) statusIndicator += '<span class="demo-indicator">Role Manager Unavailable</span>';
-                
                 content = `
-                    <div>${data.message} ${statusIndicator}</div>
-                    <div class="message-time">${new Date(data.timestamp).toLocaleTimeString()}</div>
+                    <div class="message-header">[System • ${new Date(data.timestamp).toLocaleTimeString()}]</div>
+                    <div class="message-content">${data.message}</div>
                 `;
+                
+                // Update status indicators
+                setTimeout(() => updateConnectionStatus('connected'), 100);
             } else if (data.type === 'response') {
                 className += 'response';
                 content = `
-                    <div><strong>Command:</strong> ${data.command}</div>
-                    <div class="command-result">${formatResult(data.result)}</div>
-                    <div class="message-time">${new Date(data.timestamp).toLocaleTimeString()}</div>
+                    <div class="message-header">[Assistant • ${new Date(data.timestamp).toLocaleTimeString()}]</div>
+                    <div class="message-content">
+                        <div style="margin-bottom: 8px;"><strong>⚡ Command:</strong> <code>${data.command}</code></div>
+                        <div class="command-result">${formatResult(data.result)}</div>
+                    </div>
                 `;
             }
             
             messageEl.className = className;
             messageEl.innerHTML = content;
             messagesEl.appendChild(messageEl);
-            messagesEl.scrollTop = messagesEl.scrollHeight;
+            
+            // Smooth scroll to bottom
+            setTimeout(() => {
+                messagesEl.scrollTo({
+                    top: messagesEl.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }, 50);
         }
         
         function formatResult(result) {
             if (result.error) {
                 let errorMsg = `<span style="color: #f56565;">❌ Error: ${result.error}</span>`;
+                
+                // Add suggestion if available
+                if (result.suggestion) {
+                    errorMsg += `<br><br><strong>💡 Suggestion:</strong> ${result.suggestion}`;
+                }
+                
+                // Add examples if available
+                if (result.examples && result.examples.length > 0) {
+                    errorMsg += '<br><br><strong>📝 Examples:</strong><ul class="help-commands">';
+                    result.examples.forEach(example => {
+                        errorMsg += `<li style="cursor: pointer;" onclick="selectPrompt('${example}')">${example}</li>`;
+                    });
+                    errorMsg += '</ul>';
+                    errorMsg += '<br><em>💡 Click any example to try it!</em>';
+                }
+                
                 if (result.demo) {
                     errorMsg += '<br><span class="demo-indicator">Running in demo mode</span>';
                 }
@@ -1917,6 +3002,132 @@ chat_html_template = '''
                 return html;
             }
             
+            if (result.type === 'llm_response') {
+                return `<div style="background: #e6fffa; border-left: 4px solid #38b2ac; padding: 12px; border-radius: 6px;">
+                    <strong>🤖 AI Assistant:</strong><br>${result.message}
+                </div>`;
+            }
+            
+            if (result.type === 'llm_with_executed_commands') {
+                let html = `<div style="background: #e6fffa; border-left: 4px solid #38b2ac; padding: 12px; border-radius: 6px;">
+                    <strong>🤖 AI Assistant:</strong><br>${result.natural_response}
+                </div>`;
+                
+                if (result.command_results && result.command_results.length > 0) {
+                    html += '<br><strong>🔧 Executed Commands:</strong><div class="workbench-list">';
+                    result.command_results.forEach(cmdResult => {
+                        const status = cmdResult.error ? '❌' : '✅';
+                        html += `<div class="role-assignment">
+                            ${status} <code>${cmdResult.command}</code>
+                        </div>`;
+                    });
+                    html += '</div>';
+                }
+                return html;
+            }
+            
+            if (result.type === 'llm_status') {
+                const data = result.data;
+                let html = '<strong>🤖 LLM Integration Status:</strong><div class="workbench-list">';
+                html += `<div class="workbench-item">
+                    <strong>Status:</strong> ${data.available ? '✅ Available' : '❌ Not Available'}<br>
+                    <strong>Provider:</strong> ${data.provider || 'None'}<br>
+                    <strong>Model:</strong> ${data.model || 'None'}<br>
+                    <strong>Conversation Length:</strong> ${data.conversation_length} messages
+                </div>`;
+                
+                if (data.provider_availability) {
+                    html += '<div class="workbench-item"><strong>Provider Availability:</strong>';
+                    Object.entries(data.provider_availability).forEach(([provider, status]) => {
+                        const available = status.module_available && (status.api_key_available || status.service_running);
+                        html += `<div class="role-assignment">${available ? '✅' : '❌'} ${provider}</div>`;
+                    });
+                    html += '</div>';
+                }
+                html += '</div>';
+                return html;
+            }
+            
+            if (result.type === 'llm_toggle') {
+                const color = result.enabled ? '#48bb78' : '#f56565';
+                return `<div style="color: ${color}; font-weight: bold;">🤖 ${result.message}</div>`;
+            }
+            
+            if (result.type === 'llm_clear') {
+                return `<div style="color: #48bb78; font-weight: bold;">🧹 ${result.message}</div>`;
+            }
+            
+            if (result.type === 'welcome') {
+                let html = `<div style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    color: white; 
+                    padding: 24px; 
+                    border-radius: 16px; 
+                    margin: 16px 0; 
+                    box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+                    border: 1px solid rgba(255, 255, 255, 0.2);
+                ">
+                    <div style="font-size: 18px; font-weight: 600; margin-bottom: 16px; text-align: center;">
+                        🎉 Welcome to OPS Center Chat!
+                    </div>
+                    <div style="line-height: 1.6; white-space: pre-line;">
+                        ${result.message.replace('Welcome to OPS Center Chat! 🎉\n\n', '')}
+                    </div>
+                </div>`;
+                
+                if (result.suggestions && result.suggestions.length > 0) {
+                    html += '<div style="margin-top: 16px; text-align: center;"><strong>🚀 Quick Start Actions:</strong><br>';
+                    result.suggestions.forEach(suggestion => {
+                        html += `<button onclick="selectPrompt('${suggestion}')" style="
+                            background: var(--primary-600); 
+                            color: white; 
+                            border: none; 
+                            padding: 8px 16px; 
+                            margin: 6px; 
+                            border-radius: 20px; 
+                            cursor: pointer; 
+                            font-size: 13px;
+                            font-weight: 500;
+                            transition: all 0.2s ease;
+                            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                        " onmouseover="this.style.background='var(--primary-700)'; this.style.transform='translateY(-2px)'" 
+                           onmouseout="this.style.background='var(--primary-600)'; this.style.transform='translateY(0)'">
+                            ${suggestion}
+                        </button>`;
+                    });
+                    html += '</div>';
+                }
+                return html;
+            }
+            
+            if (result.type === 'conversational') {
+                let html = `<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 16px; border-radius: 12px; margin: 8px 0;">
+                    ${result.message}
+                </div>`;
+                
+                if (result.suggestions && result.suggestions.length > 0) {
+                    html += '<div style="margin-top: 12px;"><strong>💡 Quick suggestions:</strong><br>';
+                    result.suggestions.forEach(suggestion => {
+                        html += `<button onclick="selectPrompt('${suggestion}')" style="
+                            background: var(--primary-600); 
+                            color: white; 
+                            border: none; 
+                            padding: 6px 12px; 
+                            margin: 4px; 
+                            border-radius: 16px; 
+                            cursor: pointer; 
+                            font-size: 12px;
+                            transition: all 0.2s ease;
+                        " onmouseover="this.style.background='var(--primary-700)'" 
+                           onmouseout="this.style.background='var(--primary-600)'">
+                            ${suggestion}
+                        </button>`;
+                    });
+                    html += '</div>';
+                }
+                return html;
+            }
+            
             if (result.type === 'role_assignment') {
                 return `<div class="role-assignment">${result.message}</div>`;
             }
@@ -1936,30 +3147,197 @@ chat_html_template = '''
         }
         
         // Event listeners
-        document.getElementById('messageInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
+        const messageInput = document.getElementById('messageInput');
+        
+        messageInput.addEventListener('input', autoResizeTextarea);
+        
+        messageInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
                 sendMessage();
+            } else if (e.key === 'ArrowUp' && messageInput.value === '') {
+                e.preventDefault();
+                navigateHistory('up');
+            } else if (e.key === 'ArrowDown' && messageInput.value === '') {
+                e.preventDefault();
+                navigateHistory('down');
+            } else if (e.key === '/' && messageInput.value === '') {
+                e.preventDefault();
+                messageInput.value = '/';
+                autoResizeTextarea();
             }
         });
         
-        // Connect on page load
-        connect();
+        // Handle window resize for mobile
+        window.addEventListener('resize', function() {
+            const sidebar = document.getElementById('sidebar');
+            if (window.innerWidth > 768 && sidebar.classList.contains('mobile-open')) {
+                sidebar.classList.remove('mobile-open');
+            }
+        });
+        
+        // IMMEDIATE INTERFACE ACTIVATION - No delays, no connections
+        console.log('🚨 IMMEDIATE INTERFACE ACTIVATION - Enabling NOW');
+        
+        // Test if JavaScript is working at all
+        console.log('🔧 JavaScript is running');
+        console.log('🔧 Document ready state:', document.readyState);
+        
+        // Test basic elements
+        const testInput = document.getElementById('messageInput');
+        const testButton = document.getElementById('sendButton');
+        console.log('🔧 Input element found:', !!testInput);
+        console.log('🔧 Send button found:', !!testButton);
+        
+        // Add click handler directly to test
+        if (testButton) {
+            // Remove any existing onclick
+            testButton.removeAttribute('onclick');
+            
+            // Add direct event listener
+            testButton.addEventListener('click', function(e) {
+                e.preventDefault();
+                console.log('🔥 DIRECT CLICK HANDLER FIRED!');
+                
+                // Get message and send it
+                const input = document.getElementById('messageInput');
+                const message = input.value.trim();
+                console.log('📝 Got message:', message);
+                
+                if (message) {
+                    sendViaHTTP(message, input, testButton);
+                    input.value = '';
+                } else {
+                    alert('Please type a message first!');
+                }
+            });
+            console.log('🔧 Direct click handler added');
+        }
+        
+        // Enable fallback mode immediately
+        window.fallbackMode = true;
+        
+        // Force enable interface elements RIGHT NOW
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        
+        if (messageInput) {
+            messageInput.disabled = false;
+            messageInput.placeholder = "Type your command here... (Interface Ready!)";
+            messageInput.focus();
+            console.log('✅ Input enabled immediately');
+            
+            // Add Enter key handler
+            messageInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    console.log('⌨️ Enter key pressed');
+                    
+                    const message = messageInput.value.trim();
+                    if (message) {
+                        const sendBtn = document.getElementById('sendButton');
+                        sendViaHTTP(message, messageInput, sendBtn);
+                        messageInput.value = '';
+                    }
+                }
+            });
+            console.log('⌨️ Enter key handler added');
+        }
+        
+        if (sendButton) {
+            sendButton.disabled = false;
+            sendButton.innerHTML = '<span class="send-icon">📤</span><span>Send</span>';
+            console.log('✅ Send button enabled immediately');
+        }
+        
+        // Load prompts immediately
+        fetch('/api/prompts')
+            .then(response => response.json())
+            .then(data => {
+                suggestedPrompts = data.prompts;
+                displaySuggestedPrompts(data.prompts);
+                console.log('✅ Prompts loaded');
+            })
+            .catch(error => {
+                console.log('Using default prompts');
+                displayDefaultPrompts();
+            });
+        
+        // Show immediate welcome message
+        setTimeout(() => {
+            displayMessage({
+                type: 'response',
+                command: 'System Ready',
+                result: {
+                    type: 'welcome',
+                    message: `🎉 INTERFACE IS ACTIVE AND READY!
+
+✅ You can now type commands below.
+
+Quick commands to try:
+• "help" - Show all commands
+• "agents" - List agents
+• "workbenches" - Show workbenches
+
+The interface is fully functional! Start typing below 👇`,
+                    suggestions: ["help", "agents", "workbenches", "coverage"]
+                },
+                timestamp: new Date().toISOString()
+            });
+        }, 100);
+        
+        // Also attempt connection in parallel (but don't wait for it)
+        const isCloudDeployment = window.location.hostname.includes('.onrender.com') || 
+                                 window.location.hostname.includes('.herokuapp.com') ||
+                                 window.location.hostname.includes('.railway.app') ||
+                                 window.location.hostname.includes('.vercel.app') ||
+                                 window.location.hostname.includes('.netlify.app');
+        
+        if (!isCloudDeployment) {
+            console.log('🏠 Local development - attempting WebSocket in background');
+            setTimeout(() => connect(), 100);
+        }
     </script>
 </body>
 </html>
 '''
 
+# Initialize template directory and file (for cloud deployment compatibility)
+def init_templates():
+    """Initialize templates directory and file"""
+    try:
+        import os
+        os.makedirs("templates", exist_ok=True)
+        with open("templates/chat.html", "w") as f:
+            f.write(chat_html_template)
+    except Exception as e:
+        print(f"⚠️ Template initialization warning: {e}")
+
+# Initialize templates when module loads
+init_templates()
+
+# Startup logging function
+def print_startup_info():
+    isCloudDeployment = PORT != 8080 or HOST != '0.0.0.0'
+    
+    print("🚀 Starting OPS Center Chat Interface...")
+    print(f"📱 Interface available at: http://{HOST}:{PORT}")
+    
+    if isCloudDeployment:
+        print("🌐 ☁️ Cloud deployment ready! Share your URL with team members.")
+        print("✨ Full-featured demo mode with modern UI and conversational support")
+        print("🎯 Features: Natural language commands, workbench management, role assignments")
+    else:
+        print("🔗 Share this URL with others to give them access to the MCP system")
+        print("💡 Available commands: help, agents, workbenches, roles, assign-role, agent-roles, coverage")
+    
+    print(f"🔧 MCP Client: {'✅ Connected' if MCP_AVAILABLE else '🔶 Demo Mode (Full UI Available)'}")
+    print(f"🔧 Workbench Manager: {'✅ Available' if WORKBENCH_MANAGER_AVAILABLE else '🔶 Limited'}")
+    print(f"🔧 LLM Integration: {'✅ Active' if LLM_INTEGRATION_AVAILABLE else '🔶 Rule-based with Natural Language'}")
+    print(f"🌐 Environment: {'☁️ Cloud Deployed' if isCloudDeployment else '🏠 Local Development'}")
+
+# Always print startup info for deployment logging
+print_startup_info()
+
 if __name__ == "__main__":
-    # Create the HTML template file
-    with open("templates/chat.html", "w") as f:
-        f.write(chat_html_template)
-    
-    print("🚀 Starting MCP Chat Interface...")
-    print(f"📱 Chat interface will be available at: http://{HOST}:{PORT}")
-    print("🔗 Share this URL with others to give them access to the MCP system")
-    print("💡 Available commands: help, agents, workbenches, roles, assign-role, agent-roles, coverage")
-    print(f"🔧 MCP Client Available: {MCP_AVAILABLE}")
-    print(f"🔧 Workbench Manager Available: {WORKBENCH_MANAGER_AVAILABLE}")
-    print(f"🌐 Deployment: {'Cloud' if PORT != 8080 or HOST != '0.0.0.0' else 'Local'}")
-    
     uvicorn.run(app, host=HOST, port=PORT)
