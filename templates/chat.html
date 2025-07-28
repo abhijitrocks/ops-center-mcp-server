@@ -735,6 +735,32 @@
                 return html;
             }
             
+            if (result.type === 'agent_workbench_summary') {
+                const data = result.data;
+                let html = '<strong>🏢 Agent Workbench Assignments:</strong><br>';
+                html += `<em>💬 ${data.context}</em><div class="workbench-list">`;
+                
+                Object.entries(data.assignments).forEach(([agent, roles]) => {
+                    html += `<div class="workbench-item">
+                        <strong>👤 ${agent}:</strong><br>`;
+                    
+                    if (roles.length === 0) {
+                        html += '<div class="role-assignment" style="color: #718096;">No workbench assignments</div>';
+                    } else {
+                        roles.forEach(role => {
+                            html += `<div class="role-assignment">
+                                📋 ${role.workbench_name}: <strong>${role.role}</strong>
+                            </div>`;
+                        });
+                    }
+                    html += '</div>';
+                });
+                
+                html += '</div>';
+                html += `<br><em>Total agents: ${data.total_agents}</em>`;
+                return html;
+            }
+            
             if (result.type === 'role_assignment') {
                 return `<div class="role-assignment">${result.message}</div>`;
             }
