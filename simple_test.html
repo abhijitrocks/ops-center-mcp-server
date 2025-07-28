@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Test</title>
+</head>
+<body>
+    <h1>MCP Test Interface</h1>
+    <input type="text" id="testInput" placeholder="Type 'help' here" style="width: 300px; padding: 10px;">
+    <button id="testButton" style="padding: 10px 20px; margin: 10px;">Send Test</button>
+    <div id="result" style="margin: 20px; padding: 20px; border: 1px solid #ccc;"></div>
+
+    <script>
+        console.log('🔥 Simple test script loaded');
+        
+        function testAPI() {
+            console.log('🚀 testAPI called');
+            const input = document.getElementById('testInput');
+            const result = document.getElementById('result');
+            const message = input.value || 'help';
+            
+            console.log('📝 Sending:', message);
+            result.innerHTML = 'Sending...';
+            
+            fetch('/api/command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: message, user: 'test' })
+            })
+            .then(response => {
+                console.log('✅ Response:', response.status);
+                return response.json();
+            })
+            .then(data => {
+                console.log('📦 Data:', data);
+                result.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            })
+            .catch(error => {
+                console.error('❌ Error:', error);
+                result.innerHTML = 'Error: ' + error;
+            });
+        }
+        
+        // Add event listeners when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('📱 DOM loaded');
+            const button = document.getElementById('testButton');
+            const input = document.getElementById('testInput');
+            
+            if (button) {
+                button.addEventListener('click', testAPI);
+                console.log('🔘 Button click handler added');
+            }
+            
+            if (input) {
+                input.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        testAPI();
+                    }
+                });
+                console.log('⌨️ Enter handler added');
+            }
+            
+            console.log('✅ All handlers ready');
+        });
+        
+        // Test immediate execution
+        console.log('🔧 Script end reached');
+    </script>
+</body>
+</html>
